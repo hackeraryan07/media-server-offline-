@@ -1,0 +1,6 @@
+{
+  "name": "Mobile Stream Server",
+  "description": "Stream local video content over Wi-Fi directly to your Android TV",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

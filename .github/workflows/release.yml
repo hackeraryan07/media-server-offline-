@@ -1,0 +1,70 @@
+name: Build Release APKs
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  build-release:
+    name: Build Mobile and TV Release Modules
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v4
+
+    - name: Set up JDK 17
+      uses: actions/setup-java@v4
+      with:
+        java-version: '17'
+        distribution: 'temurin'
+
+    - name: Setup Gradle
+      uses: gradle/actions/setup-gradle@v3
+      with:
+        cache-read-only: ${{ github.ref != 'refs/heads/main' && github.ref != 'refs/heads/master' }}
+
+    - name: Generate Gradle Wrapper if Missing
+      run: |
+        if [ ! -f "gradlew" ] || [ ! -f "gradle/wrapper/gradle-wrapper.jar" ]; then
+          echo "Gradle wrapper not found. Generating wrapper..."
+          gradle wrapper
+        fi
+        if ! unzip -t gradle/wrapper/gradle-wrapper.jar >/dev/null 2>&1; then
+          echo "Gradle wrapper jar is corrupt. Regenerating..."
+          rm -f gradle/wrapper/gradle-wrapper.jar gradlew gradlew.bat
+          gradle wrapper
+        fi
+        chmod +x gradlew
+
+    - name: Decode Release Keystore
+      run: |
+        echo "${{ secrets.Release_Key }}" | base64 --decode > release.keystore
+
+    - name: Build and Sign Mobile, TV, and Remote Audio Release APKs
+      run: ./gradlew :mobile:assembleRelease :tv:assembleRelease :remoteaudio:assembleRelease --parallel --build-cache --configure-on-demand --no-daemon -x test -x lint
+      env:
+        KEYSTORE_PATH: ${{ github.workspace }}/release.keystore
+        KEY_ALIAS: my_release_key
+        STORE_PASSWORD: ${{ secrets.STORE_PASSWORD || 'Aryan@2026' }}
+        KEY_PASSWORD: ${{ secrets.KEY_PASSWORD || 'Aryan@2026' }}
+
+    - name: Upload Mobile Release APK
+      uses: actions/upload-artifact@v4
+      with:
+        name: mobile-stream-server-release
+        path: mobile/build/outputs/apk/release/mobile-release.apk
+
+    - name: Upload TV Release APK
+      uses: actions/upload-artifact@v4
+      with:
+        name: tv-stream-client-release
+        path: tv/build/outputs/apk/release/tv-release.apk
+
+    - name: Upload Remote Audio Release APK
+      uses: actions/upload-artifact@v4
+      with:
+        name: remote-audio-client-release
+        path: remoteaudio/build/outputs/apk/release/remoteaudio-release.apk

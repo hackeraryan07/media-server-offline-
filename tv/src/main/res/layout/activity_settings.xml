@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/fastlane_background"
+    android:gravity="center"
+    android:orientation="vertical"
+    android:padding="32dp">
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Settings"
+        android:textColor="#FFFFFF"
+        android:textSize="32sp"
+        android:layout_marginBottom="32dp" />
+
+    <Switch
+        android:id="@+id/switch_prevent_screensaver"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Prevent Screen Saver while playing video"
+        android:textColor="#FFFFFF"
+        android:textSize="20sp"
+        android:focusable="true"
+        android:focusableInTouchMode="true"
+        android:padding="16dp"
+        android:background="?android:attr/selectableItemBackground" />
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Default Auto-Resume Action (10s Timer)"
+        android:textColor="#FFFFFF"
+        android:textSize="20sp"
+        android:layout_marginTop="24dp"
+        android:layout_marginBottom="8dp"/>
+
+    <RadioGroup
+        android:id="@+id/radio_group_resume_default"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal">
+
+        <RadioButton
+            android:id="@+id/radio_start_over"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Start Over"
+            android:textColor="#FFFFFF"
+            android:textSize="18sp"
+            android:focusable="true"
+            android:focusableInTouchMode="true"
+            android:padding="16dp"
+            android:layout_marginEnd="16dp"
+            android:buttonTint="#FFFFFF"
+            android:background="?android:attr/selectableItemBackground"/>
+
+        <RadioButton
+            android:id="@+id/radio_continue"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Continue"
+            android:textColor="#FFFFFF"
+            android:textSize="18sp"
+            android:focusable="true"
+            android:focusableInTouchMode="true"
+            android:padding="16dp"
+            android:buttonTint="#FFFFFF"
+            android:background="?android:attr/selectableItemBackground"/>
+    </RadioGroup>
+</LinearLayout>

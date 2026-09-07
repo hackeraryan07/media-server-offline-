@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.TvApp" parent="Theme.Leanback">
+        <item name="android:windowBackground">@color/default_background</item>
+        <item name="colorPrimary">@color/primary_color</item>
+        <item name="colorAccent">@color/accent_color</item>
+        <item name="defaultBrandColor">@color/accent_color</item>
+        <item name="searchOrbColor">@color/accent_color</item>
+    </style>
+
+    <style name="Theme.TvApp.Player" parent="Theme.AppCompat.NoActionBar">
+        <item name="android:windowBackground">#000000</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:windowFullscreen">true</item>
+        <item name="android:windowContentOverlay">@null</item>
+    </style>
+</resources>

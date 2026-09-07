@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="default_background">#121824</color>
+    <color name="accent_color">#4F46E5</color>
+    <color name="primary_color">#1F2937</color>
+    <color name="fastlane_background">#111827</color>
+    <color name="text_bright">#F3F4F6</color>
+    <color name="text_muted">#9CA3AF</color>
+</resources>

@@ -1,0 +1,117 @@
+name: Build Android Dual Module APKs
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  pull_request:
+    branches: [ "main", "master" ]
+
+jobs:
+  build:
+    name: Build Mobile and TV Modules
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v4
+
+    - name: Set up JDK 17
+      uses: actions/setup-java@v4
+      with:
+        java-version: '17'
+        distribution: 'temurin'
+
+    - name: Setup Gradle
+      uses: gradle/actions/setup-gradle@v3
+      with:
+        cache-read-only: ${{ github.ref != 'refs/heads/main' && github.ref != 'refs/heads/master' }}
+
+    - name: Generate Gradle Wrapper if Missing
+      run: |
+        if [ ! -f "gradlew" ] || [ ! -f "gradle/wrapper/gradle-wrapper.jar" ]; then
+          echo "Gradle wrapper not found. Generating wrapper..."
+          gradle wrapper
+        fi
+        if ! unzip -t gradle/wrapper/gradle-wrapper.jar >/dev/null 2>&1; then
+          echo "Gradle wrapper jar is corrupt. Regenerating..."
+          rm -f gradle/wrapper/gradle-wrapper.jar gradlew gradlew.bat
+          gradle wrapper
+        fi
+        chmod +x gradlew
+
+    - name: Set up Debug Keystore
+      run: |
+        if [ -f "debug.keystore.base64" ]; then
+          echo "Decoding debug.keystore from base64..."
+          base64 -d debug.keystore.base64 > debug.keystore
+        elif [ -f "debug.keystore" ]; then
+          echo "debug.keystore already exists!"
+        else
+          echo "Generating temporary debug.keystore for signing configuration..."
+          keytool -genkey -v -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
+        fi
+
+    - name: Ensure Required Android Resources Exist
+      run: |
+        # Ensure directories exist
+        mkdir -p mobile/src/main/res/xml
+        mkdir -p mobile/src/main/res/values
+        mkdir -p mobile/src/main/res/mipmap-anydpi-v26
+        
+        # backup_rules.xml
+        if [ ! -f "mobile/src/main/res/xml/backup_rules.xml" ]; then
+          echo "Creating backup_rules.xml"
+          printf '%s\n' '<?xml version="1.0" encoding="utf-8"?>' '<full-backup-content>' '</full-backup-content>' > mobile/src/main/res/xml/backup_rules.xml
+        fi
+        
+        # data_extraction_rules.xml
+        if [ ! -f "mobile/src/main/res/xml/data_extraction_rules.xml" ]; then
+          echo "Creating data_extraction_rules.xml"
+          printf '%s\n' '<?xml version="1.0" encoding="utf-8"?>' '<data-extraction-rules>' '    <cloud-backup>' '    </cloud-backup>' '</data-extraction-rules>' > mobile/src/main/res/xml/data_extraction_rules.xml
+        fi
+        
+        # themes.xml
+        if [ ! -f "mobile/src/main/res/values/themes.xml" ]; then
+          echo "Creating themes.xml"
+          printf '%s\n' '<?xml version="1.0" encoding="utf-8"?>' '<resources>' '    <style name="Theme.MyApplication" parent="android:Theme.DeviceDefault.NoActionBar" />' '</resources>' > mobile/src/main/res/values/themes.xml
+        fi
+        
+        # ic_launcher.xml
+        if [ ! -f "mobile/src/main/res/mipmap-anydpi-v26/ic_launcher.xml" ]; then
+          echo "Creating ic_launcher.xml"
+          printf '%s\n' '<?xml version="1.0" encoding="utf-8"?>' '<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">' '    <background android:drawable="@android:color/white"/>' '    <foreground android:drawable="@android:color/black"/>' '</adaptive-icon>' > mobile/src/main/res/mipmap-anydpi-v26/ic_launcher.xml
+        fi
+        
+        # ic_launcher_round.xml
+        if [ ! -f "mobile/src/main/res/mipmap-anydpi-v26/ic_launcher_round.xml" ]; then
+          echo "Creating ic_launcher_round.xml"
+          printf '%s\n' '<?xml version="1.0" encoding="utf-8"?>' '<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">' '    <background android:drawable="@android:color/white"/>' '    <foreground android:drawable="@android:color/black"/>' '</adaptive-icon>' > mobile/src/main/res/mipmap-anydpi-v26/ic_launcher_round.xml
+        fi
+
+    - name: Update Version Code to Avoid Conflicts
+      run: |
+        VERSION_CODE=$(date +%s)
+        VERSION_NAME=$(date +'%Y.%m.%d.%H%M')
+        find . -name "build.gradle.kts" -exec sed -i -E "s/versionCode = [0-9]+/versionCode = $VERSION_CODE/g" {} +
+        find . -name "build.gradle.kts" -exec sed -i -E "s/versionName = \"[^\"]+\"/versionName = \"$VERSION_NAME\"/g" {} +
+
+    - name: Build Mobile, TV and Remote Audio debug APKs
+      run: ./gradlew assembleDebug --parallel --build-cache --configuration-cache --configure-on-demand --no-daemon -x test -x lint -x check
+
+    - name: Upload Mobile Debug APK
+      uses: actions/upload-artifact@v4
+      with:
+        name: mobile-stream-server-debug
+        path: mobile/build/outputs/apk/debug/mobile-debug.apk
+
+    - name: Upload TV Debug APK
+      uses: actions/upload-artifact@v4
+      with:
+        name: tv-stream-client-debug
+        path: tv/build/outputs/apk/debug/tv-debug.apk
+
+    - name: Upload Remote Audio Debug APK
+      uses: actions/upload-artifact@v4
+      with:
+        name: remote-audio-client-debug
+        path: remoteaudio/build/outputs/apk/debug/remoteaudio-debug.apk

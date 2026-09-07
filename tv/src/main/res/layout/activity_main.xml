@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/default_background">
+
+    <!-- Connection / Discovery Layout -->
+    <LinearLayout
+        android:id="@+id/connection_container"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical"
+        android:gravity="center"
+        android:padding="32dp"
+        android:visibility="visible">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="TV CLIENT STREAMER"
+            android:textColor="@color/text_bright"
+            android:textSize="32sp"
+            android:textStyle="bold"
+            android:letterSpacing="0.05" />
+
+        <ProgressBar
+            android:id="@+id/discovery_progress"
+            style="?android:attr/progressBarStyleLarge"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:indeterminateTint="@color/accent_color"
+            android:layout_marginTop="32dp" />
+
+        <TextView
+            android:id="@+id/status_message"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/searching_servers"
+            android:textColor="@color/text_muted"
+            android:textSize="16sp"
+            android:layout_marginTop="16dp"
+            android:gravity="center" />
+
+        <!-- Manual IP entry -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/enter_ip"
+            android:textColor="@color/text_muted"
+            android:textSize="13sp"
+            android:layout_marginTop="40dp" />
+
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:layout_marginTop="10dp"
+            android:gravity="center">
+
+            <EditText
+                android:id="@+id/ip_input"
+                android:layout_width="180dp"
+                android:layout_height="wrap_content"
+                android:hint="192.168.1.50"
+                android:textColor="@color/text_bright"
+                android:textColorHint="@color/text_muted"
+                android:background="@android:color/transparent"
+                android:lines="1"
+                android:textSize="18sp"
+                android:padding="8dp"
+                android:imeOptions="actionDone"
+                android:textAlignment="center" />
+
+            <Button
+                android:id="@+id/btn_connect"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/connect_button"
+                android:backgroundTint="@color/accent_color"
+                android:textColor="@color/text_bright"
+                android:layout_marginLeft="16dp" />
+        </LinearLayout>
+
+        <Button
+            android:id="@+id/btn_retry"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/retry_button"
+            android:layout_marginTop="16dp"
+            android:visibility="gone" />
+
+    </LinearLayout>
+
+    <!-- Leanback Fragment container -->
+    <androidx.fragment.app.FragmentContainerView
+        android:id="@+id/browse_fragment_container"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:visibility="gone" />
+
+</FrameLayout>

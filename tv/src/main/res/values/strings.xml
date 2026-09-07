@@ -1,0 +1,10 @@
+<resources>
+    <string name="app_name">TV Client</string>
+    <string name="search_hint">Search videos...</string>
+    <string name="retry_button">Retry Connection</string>
+    <string name="no_servers_found">No mobile streaming servers found on the local network.</string>
+    <string name="searching_servers">Searching for Mobile Stream Servers on Wi-Fi...</string>
+    <string name="enter_ip">Or Enter Server IP Manually:</string>
+    <string name="connect_button">Connect</string>
+    <string name="channel_local">Local Shared Channels</string>
+</resources>
