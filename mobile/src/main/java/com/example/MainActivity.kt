@@ -796,25 +796,112 @@ fun ServerDashboardScreen(
                         var aiPrompt by remember { mutableStateOf("") }
                         var aiLoading by remember { mutableStateOf(false) }
                         var aiError by remember { mutableStateOf<String?>(null) }
+                        var generatedResult by remember { mutableStateOf<AiHelper.AiPlaylistResult?>(null) }
+                        var decidedPlaylistName by remember { mutableStateOf("") }
                         val coroutineScope = rememberCoroutineScope()
                         
                         AlertDialog(
                             onDismissRequest = { if (!aiLoading) showAiDialog = false },
-                            title = { Text("Generate Playlist with AI", fontWeight = FontWeight.Bold) },
-                            text = {
-                                Column {
-                                    Text("Describe what you want (e.g. 'all taarak mehta episodes in ascending order').")
-                                    Spacer(modifier = Modifier.height(8.dp))
-                                    OutlinedTextField(
-                                        value = aiPrompt,
-                                        onValueChange = { aiPrompt = it },
-                                        placeholder = { Text("Your prompt...") },
-                                        modifier = Modifier.fillMaxWidth(),
-                                        enabled = !aiLoading
+                            title = {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(
+                                        Icons.Default.Star,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(22.dp)
                                     )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(
+                                        if (generatedResult == null) "Generate Playlist with AI" else "AI Decided Playlist",
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                            },
+                            text = {
+                                Column(modifier = Modifier.fillMaxWidth()) {
+                                    if (generatedResult == null) {
+                                        Text(
+                                            "Describe what you want (e.g. 'all taarak mehta episodes in ascending order'). AI will select the videos and decide a creative, catchy title for your playlist.",
+                                            fontSize = 14.sp,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                        Spacer(modifier = Modifier.height(12.dp))
+                                        OutlinedTextField(
+                                            value = aiPrompt,
+                                            onValueChange = { aiPrompt = it },
+                                            placeholder = { Text("E.g. comedy episodes, action highlights...") },
+                                            modifier = Modifier.fillMaxWidth(),
+                                            enabled = !aiLoading,
+                                            shape = RoundedCornerShape(12.dp)
+                                        )
+                                    } else {
+                                        Text(
+                                            "The AI has curated your playlist and decided the title below. You can keep it or fine-tune it before saving:",
+                                            fontSize = 13.sp,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                        Spacer(modifier = Modifier.height(10.dp))
+                                        OutlinedTextField(
+                                            value = decidedPlaylistName,
+                                            onValueChange = { decidedPlaylistName = it },
+                                            label = { Text("Playlist Name (Decided by AI)") },
+                                            singleLine = true,
+                                            modifier = Modifier.fillMaxWidth(),
+                                            shape = RoundedCornerShape(12.dp)
+                                        )
+                                        Spacer(modifier = Modifier.height(12.dp))
+                                        Text(
+                                            "Selected Videos (${generatedResult!!.ids.size} found):",
+                                            fontWeight = FontWeight.SemiBold,
+                                            fontSize = 13.sp,
+                                            color = MaterialTheme.colorScheme.onSurface
+                                        )
+                                        Spacer(modifier = Modifier.height(6.dp))
+                                        Card(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
+                                            shape = RoundedCornerShape(8.dp)
+                                        ) {
+                                            Column(modifier = Modifier.padding(10.dp)) {
+                                                val matched = generatedResult!!.ids.map { id ->
+                                                    videoList.find { it.id == id }?.title ?: "Video $id"
+                                                }
+                                                matched.take(4).forEach { title ->
+                                                    Row(
+                                                        verticalAlignment = Alignment.CenterVertically,
+                                                        modifier = Modifier.padding(vertical = 2.dp)
+                                                    ) {
+                                                        Icon(
+                                                            Icons.Default.PlayArrow,
+                                                            contentDescription = null,
+                                                            modifier = Modifier.size(14.dp),
+                                                            tint = MaterialTheme.colorScheme.primary
+                                                        )
+                                                        Spacer(modifier = Modifier.width(6.dp))
+                                                        Text(
+                                                            title,
+                                                            fontSize = 12.sp,
+                                                            maxLines = 1,
+                                                            overflow = TextOverflow.Ellipsis
+                                                        )
+                                                    }
+                                                }
+                                                if (matched.size > 4) {
+                                                    Text(
+                                                        "+ ${matched.size - 4} more videos",
+                                                        fontSize = 11.sp,
+                                                        fontWeight = FontWeight.Medium,
+                                                        color = MaterialTheme.colorScheme.primary,
+                                                        modifier = Modifier.padding(top = 4.dp, start = 20.dp)
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+
                                     if (aiError != null) {
-                                        Spacer(modifier = Modifier.height(4.dp))
-                                        Text(aiError!!, color = Color.Red, fontSize = 12.sp)
+                                        Spacer(modifier = Modifier.height(8.dp))
+                                        Text(aiError!!, color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
                                     }
                                     if (aiLoading) {
                                         Spacer(modifier = Modifier.height(16.dp))
@@ -823,52 +910,82 @@ fun ServerDashboardScreen(
                                 }
                             },
                             confirmButton = {
-                                Button(
-                                    onClick = {
-                                        if (aiPrompt.isNotBlank()) {
-                                            aiLoading = true
-                                            aiError = null
-                                            coroutineScope.launch {
-                                                try {
-                                                    val aiResult = AiHelper.generatePlaylist(context, aiPrompt)
-                                                    if (aiResult.ids.isEmpty()) {
-                                                        aiError = "No matching videos found."
-                                                        aiLoading = false
-                                                    } else {
-                                                        val db = com.example.db.AppDatabase.getDatabase(context)
-                                                        val newId = db.playlistDao().insertPlaylistSync(com.example.db.Playlist(name = aiResult.name)).toInt()
-                                                        
-                                                        // Insert items
-                                                        aiResult.ids.forEachIndexed { index, vId ->
-                                                            db.playlistDao().insertPlaylistItemSync(
-                                                                com.example.db.PlaylistItem(
-                                                                    playlistId = newId,
-                                                                    videoId = vId,
-                                                                    displayOrder = index
-                                                                )
-                                                            )
+                                if (generatedResult == null) {
+                                    Button(
+                                        onClick = {
+                                            if (aiPrompt.isNotBlank()) {
+                                                aiLoading = true
+                                                aiError = null
+                                                coroutineScope.launch {
+                                                    try {
+                                                        val aiResult = AiHelper.generatePlaylist(context, aiPrompt)
+                                                        if (aiResult.ids.isEmpty()) {
+                                                            aiError = "No matching videos found in your library."
+                                                            aiLoading = false
+                                                        } else {
+                                                            generatedResult = aiResult
+                                                            decidedPlaylistName = aiResult.name
+                                                            aiLoading = false
                                                         }
-                                                        
-                                                        showAiDialog = false
+                                                    } catch (e: Exception) {
+                                                        aiError = e.message ?: "An error occurred."
+                                                        aiLoading = false
                                                     }
-                                                } catch (e: Exception) {
-                                                    aiError = e.message ?: "An error occurred."
-                                                    aiLoading = false
                                                 }
                                             }
-                                        }
-                                    },
-                                    enabled = !aiLoading
-                                ) {
-                                    Text("Generate & Save")
+                                        },
+                                        enabled = !aiLoading && aiPrompt.isNotBlank()
+                                    ) {
+                                        Text("Generate")
+                                    }
+                                } else {
+                                    Button(
+                                        onClick = {
+                                            coroutineScope.launch {
+                                                try {
+                                                    val db = com.example.db.AppDatabase.getDatabase(context)
+                                                    val finalTitle = decidedPlaylistName.trim().ifBlank { "AI Playlist" }
+                                                    val newId = db.playlistDao().insertPlaylistSync(com.example.db.Playlist(name = finalTitle)).toInt()
+
+                                                    generatedResult!!.ids.forEachIndexed { index, vId ->
+                                                        db.playlistDao().insertPlaylistItemSync(
+                                                            com.example.db.PlaylistItem(
+                                                                playlistId = newId,
+                                                                videoId = vId,
+                                                                displayOrder = index
+                                                            )
+                                                        )
+                                                    }
+                                                    showAiDialog = false
+                                                } catch (e: Exception) {
+                                                    aiError = e.message ?: "Failed to save playlist."
+                                                }
+                                            }
+                                        },
+                                        enabled = !aiLoading
+                                    ) {
+                                        Text("Save Playlist")
+                                    }
                                 }
                             },
                             dismissButton = {
-                                TextButton(
-                                    onClick = { showAiDialog = false },
-                                    enabled = !aiLoading
-                                ) {
-                                    Text("Cancel")
+                                if (generatedResult != null) {
+                                    TextButton(
+                                        onClick = {
+                                            generatedResult = null
+                                            aiError = null
+                                        },
+                                        enabled = !aiLoading
+                                    ) {
+                                        Text("Change Prompt")
+                                    }
+                                } else {
+                                    TextButton(
+                                        onClick = { showAiDialog = false },
+                                        enabled = !aiLoading
+                                    ) {
+                                        Text("Cancel")
+                                    }
                                 }
                             }
                         )
