@@ -14,6 +14,7 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
+import androidx.media3.exoplayer.DefaultRenderersFactory as NextRenderersFactory
 
 import org.json.JSONObject
 import android.widget.Toast
@@ -277,19 +278,19 @@ class PlayerActivity : AppCompatActivity() {
             }
 
             findViewById<View>(R.id.btnSubtitles).setOnClickListener {
-                Toast.makeText(this, "Subtitles toggled", Toast.LENGTH_SHORT).show()
+                showSubtitleDialog()
                 scheduleMetadataHide()
             }
             findViewById<View>(R.id.btnAudioTrack).setOnClickListener {
+                showAudioTrackDialog()
+                scheduleMetadataHide()
+            }
+            findViewById<View>(R.id.btnAudioTrack).setOnLongClickListener {
                 isRemoteAudioEnabled = !isRemoteAudioEnabled
                 val msg = if (isRemoteAudioEnabled) "Remote Audio Enabled" else "Remote Audio Disabled"
                 Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
                 updateAudioTrackButtonState()
                 scheduleMetadataHide()
-
-            }
-            findViewById<View>(R.id.btnAudioTrack).setOnLongClickListener {
-                requestAudioShiftDialog()
                 true
             }
             findViewById<View>(R.id.btnPlaylist).setOnClickListener {
@@ -355,7 +356,10 @@ class PlayerActivity : AppCompatActivity() {
         videoUrlString = currentVideo?.url
         titleText.text = currentVideo?.title
         
-        exoPlayer = ExoPlayer.Builder(this).build()
+        val renderersFactory = NextRenderersFactory(this)
+            .setExtensionRendererMode(androidx.media3.exoplayer.DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER)
+            .setEnableDecoderFallback(true)
+        exoPlayer = ExoPlayer.Builder(this, renderersFactory).build()
         playerView.player = exoPlayer
         
         val items = mutableListOf<MediaItem>()
@@ -1071,6 +1075,96 @@ class PlayerActivity : AppCompatActivity() {
             if (video.watchedPosition <= 1000 || (exoPlayer?.currentPosition ?: 0L) > 0L) {
                 exoPlayer?.play()
             }
+        }
+    }
+
+    private fun showAudioTrackDialog() {
+        exoPlayer?.let { player ->
+            val tracks = player.currentTracks
+            val audioGroups = mutableListOf<Pair<androidx.media3.common.Tracks.Group, Int>>()
+            val trackNames = mutableListOf<String>()
+
+            for (group in tracks.groups) {
+                if (group.type == androidx.media3.common.C.TRACK_TYPE_AUDIO) {
+                    for (i in 0 until group.length) {
+                        val format = group.getTrackFormat(i)
+                        val lang = format.language ?: "Und"
+                        val label = format.label ?: format.sampleMimeType ?: "Audio track"
+                        val isSelected = group.isTrackSelected(i)
+                        audioGroups.add(Pair(group, i))
+                        trackNames.add("$label ($lang)${if (isSelected) " [Active]" else ""}")
+                    }
+                }
+            }
+
+            if (trackNames.isEmpty()) {
+                Toast.makeText(this, "No audio tracks available", Toast.LENGTH_SHORT).show()
+                return
+            }
+
+            android.app.AlertDialog.Builder(this)
+                .setTitle("Select Audio Track")
+                .setItems(trackNames.toTypedArray()) { _, which ->
+                    val (group, trackIndex) = audioGroups[which]
+                    val mappedTrackInfo = player.trackSelectionParameters
+                    val newParameters = mappedTrackInfo.buildUpon()
+                        .setOverrideForType(
+                            androidx.media3.common.TrackSelectionOverride(
+                                group.mediaTrackGroup,
+                                listOf(trackIndex)
+                            )
+                        )
+                        .build()
+                    player.trackSelectionParameters = newParameters
+                    Toast.makeText(this, "Selected: ${trackNames[which]}", Toast.LENGTH_SHORT).show()
+                }
+                .show()
+        }
+    }
+
+    private fun showSubtitleDialog() {
+        exoPlayer?.let { player ->
+            val tracks = player.currentTracks
+            val subGroups = mutableListOf<Pair<androidx.media3.common.Tracks.Group?, Int>>()
+            val trackNames = mutableListOf<String>()
+
+            trackNames.add("Off")
+            subGroups.add(Pair(null, -1))
+
+            for (group in tracks.groups) {
+                if (group.type == androidx.media3.common.C.TRACK_TYPE_TEXT) {
+                    for (i in 0 until group.length) {
+                        val format = group.getTrackFormat(i)
+                        val lang = format.language ?: "Und"
+                        val label = format.label ?: format.sampleMimeType ?: "Subtitle"
+                        val isSelected = group.isTrackSelected(i)
+                        subGroups.add(Pair(group, i))
+                        trackNames.add("$label ($lang)${if (isSelected) " [Active]" else ""}")
+                    }
+                }
+            }
+
+            android.app.AlertDialog.Builder(this)
+                .setTitle("Select Subtitles")
+                .setItems(trackNames.toTypedArray()) { _, which ->
+                    val (group, trackIndex) = subGroups[which]
+                    val mappedTrackInfo = player.trackSelectionParameters
+                    val builder = mappedTrackInfo.buildUpon()
+                    if (group == null || trackIndex == -1) {
+                        builder.setTrackTypeDisabled(androidx.media3.common.C.TRACK_TYPE_TEXT, true)
+                    } else {
+                        builder.setTrackTypeDisabled(androidx.media3.common.C.TRACK_TYPE_TEXT, false)
+                            .setOverrideForType(
+                                androidx.media3.common.TrackSelectionOverride(
+                                    group.mediaTrackGroup,
+                                    listOf(trackIndex)
+                                )
+                            )
+                    }
+                    player.trackSelectionParameters = builder.build()
+                    Toast.makeText(this, "Selected Subtitles: ${trackNames[which]}", Toast.LENGTH_SHORT).show()
+                }
+                .show()
         }
     }
 }

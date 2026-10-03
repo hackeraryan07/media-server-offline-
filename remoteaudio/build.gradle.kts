@@ -60,5 +60,6 @@ dependencies {
   implementation(libs.kotlinx.coroutines.android)
   implementation(libs.kotlinx.coroutines.core)
   implementation(libs.okhttp)
+  implementation(libs.nextlib.media3ext)
   implementation("androidx.media3:media3-exoplayer:1.2.1")
 }
