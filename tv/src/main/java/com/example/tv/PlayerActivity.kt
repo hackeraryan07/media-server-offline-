@@ -14,7 +14,8 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
-import androidx.media3.exoplayer.DefaultRenderersFactory as NextRenderersFactory
+import androidx.media3.exoplayer.DefaultRenderersFactory
+import io.github.anilbeesetti.nextlib.media3ext.ffdecoder.NextRenderersFactory
 
 import org.json.JSONObject
 import android.widget.Toast
@@ -330,8 +331,20 @@ class PlayerActivity : AppCompatActivity() {
             playlist = intent.getSerializableExtra("playlist") as? ArrayList<TvVideo>
             currentIndex = intent.getIntExtra("currentIndex", 0)
     
+            if (currentVideo == null && intent.data != null) {
+                val uri = intent.data!!
+                val title = uri.lastPathSegment ?: "Media"
+                currentVideo = TvVideo(
+                    id = uri.toString(),
+                    title = title,
+                    url = uri.toString(),
+                    duration = "00:00",
+                    isLocal = true
+                )
+            }
+    
             if (currentVideo == null) {
-                Toast.makeText(this, "No video provided", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, "No media provided", Toast.LENGTH_SHORT).show()
                 finish()
                 return
             }
@@ -357,9 +370,25 @@ class PlayerActivity : AppCompatActivity() {
         titleText.text = currentVideo?.title
         
         val renderersFactory = NextRenderersFactory(this)
-            .setExtensionRendererMode(androidx.media3.exoplayer.DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER)
+            .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER)
             .setEnableDecoderFallback(true)
-        exoPlayer = ExoPlayer.Builder(this, renderersFactory).build()
+
+        val trackSelector = androidx.media3.exoplayer.trackselection.DefaultTrackSelector(this).apply {
+            setParameters(
+                buildUponParameters()
+                    .setTunnelingEnabled(true)
+            )
+        }
+
+        val audioAttributes = androidx.media3.common.AudioAttributes.Builder()
+            .setUsage(androidx.media3.common.C.USAGE_MEDIA)
+            .setContentType(androidx.media3.common.C.AUDIO_CONTENT_TYPE_MOVIE)
+            .build()
+
+        exoPlayer = ExoPlayer.Builder(this, renderersFactory)
+            .setTrackSelector(trackSelector)
+            .setAudioAttributes(audioAttributes, true)
+            .build()
         playerView.player = exoPlayer
         
         val items = mutableListOf<MediaItem>()

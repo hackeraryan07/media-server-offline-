@@ -14,7 +14,7 @@ import androidx.core.app.NotificationCompat
 import androidx.media3.common.MediaItem
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.DefaultRenderersFactory
-import androidx.media3.exoplayer.DefaultRenderersFactory as NextRenderersFactory
+import io.github.anilbeesetti.nextlib.media3ext.ffdecoder.NextRenderersFactory
 import com.example.MainActivity
 import com.example.RemoteActivity
 import kotlinx.coroutines.CoroutineScope
@@ -58,9 +58,17 @@ class AudioSyncService : Service() {
         super.onCreate()
         createNotificationChannel()
         val renderersFactory = NextRenderersFactory(applicationContext)
-            .setExtensionRendererMode(androidx.media3.exoplayer.DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER)
+            .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER)
             .setEnableDecoderFallback(true)
-        exoPlayer = ExoPlayer.Builder(applicationContext, renderersFactory).build()
+
+        val audioAttributes = androidx.media3.common.AudioAttributes.Builder()
+            .setUsage(androidx.media3.common.C.USAGE_MEDIA)
+            .setContentType(androidx.media3.common.C.AUDIO_CONTENT_TYPE_MOVIE)
+            .build()
+
+        exoPlayer = ExoPlayer.Builder(applicationContext, renderersFactory)
+            .setAudioAttributes(audioAttributes, true)
+            .build()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
