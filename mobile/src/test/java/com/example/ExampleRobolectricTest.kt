@@ -25,18 +25,18 @@ class ExampleRobolectricTest {
   @Test
   fun `ai decides creative playlist name and avoids prompt echo`() {
     val videos = listOf(
-      LocalVideoServer.SharedVideo("1", "Taarak Mehta Ka Ooltah Chashmah - Ep 100", "", 100L, isLocal = true, folder = "Local"),
-      LocalVideoServer.SharedVideo("2", "Taarak Mehta Ka Ooltah Chashmah - Ep 101", "", 100L, isLocal = true, folder = "Local")
+      LocalVideoServer.SharedVideo("1", "Science Documentary - Ep 100", "", 100L, isLocal = true, folder = "Local"),
+      LocalVideoServer.SharedVideo("2", "Science Documentary - Ep 101", "", 100L, isLocal = true, folder = "Local")
     )
 
     // When AI decides a creative title
-    val creativeName = AiHelper.cleanAndValidatePlaylistName("Gokuldham Chronicles", "all taarak mehta episodes in ascending order", videos)
-    assertEquals("Gokuldham Chronicles", creativeName)
+    val creativeName = AiHelper.cleanAndValidatePlaylistName("Science Journey", "all science episodes in ascending order", videos)
+    assertEquals("Science Journey", creativeName)
 
     // When AI echoes the prompt
-    val fallbackName = AiHelper.cleanAndValidatePlaylistName("all taarak mehta episodes in ascending order", "all taarak mehta episodes in ascending order", videos)
-    assertNotEquals("all taarak mehta episodes in ascending order", fallbackName)
-    assertTrue(fallbackName.contains("Taarak Mehta", ignoreCase = true))
+    val fallbackName = AiHelper.cleanAndValidatePlaylistName("all science episodes in ascending order", "all science episodes in ascending order", videos)
+    assertNotEquals("all science episodes in ascending order", fallbackName)
+    assertTrue(fallbackName.contains("Science", ignoreCase = true))
 
     // When AI returns generic or blank name
     val genericName = AiHelper.cleanAndValidatePlaylistName("", "comedy shows", emptyList())
@@ -45,10 +45,10 @@ class ExampleRobolectricTest {
 
   @Test
   fun `extractCountFromPrompt accurately extracts user specified counts`() {
-    assertEquals(200, AiHelper.extractCountFromPrompt("all 200 taarak mehta episodes in ascending order"))
+    assertEquals(200, AiHelper.extractCountFromPrompt("all 200 science episodes in ascending order"))
     assertEquals(215, AiHelper.extractCountFromPrompt("arrange 215 episodes chronologically"))
     assertEquals(150, AiHelper.extractCountFromPrompt("total of 150 videos in order"))
-    assertEquals(250, AiHelper.extractCountFromPrompt("there are 250 eps of naruto"))
+    assertEquals(250, AiHelper.extractCountFromPrompt("there are 250 eps of documentary"))
     assertEquals(null, AiHelper.extractCountFromPrompt("arrange comedy episodes"))
   }
 

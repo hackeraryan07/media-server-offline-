@@ -1,8 +1,7 @@
-package com.example.ui.theme
+package com.example.remoteaudio.ui.theme
 
 import androidx.compose.ui.graphics.Color
 
-// Professional Material 3 Palette (Plum / Iris / Violet Harmony)
 val PrimaryLight = Color(0xFF6750A4)
 val OnPrimaryLight = Color(0xFFFFFFFF)
 val PrimaryContainerLight = Color(0xFFEADDFF)
@@ -13,21 +12,13 @@ val OnSecondaryLight = Color(0xFFFFFFFF)
 val SecondaryContainerLight = Color(0xFFE8DEF8)
 val OnSecondaryContainerLight = Color(0xFF1D192B)
 
-val TertiaryLight = Color(0xFF7D5260)
-val OnTertiaryLight = Color(0xFFFFFFFF)
-val TertiaryContainerLight = Color(0xFFFFD8E4)
-val OnTertiaryContainerLight = Color(0xFF31111D)
-
 val BackgroundLight = Color(0xFFFDF7FF)
 val OnBackgroundLight = Color(0xFF1D1B20)
 val SurfaceLight = Color(0xFFFDF7FF)
 val OnSurfaceLight = Color(0xFF1D1B20)
 val SurfaceVariantLight = Color(0xFFE7E0EC)
 val OnSurfaceVariantLight = Color(0xFF49454F)
-val OutlineLight = Color(0xFF79747E)
-val OutlineVariantLight = Color(0xFFCAC4D0)
 
-// Dark Theme Tokens
 val PrimaryDark = Color(0xFFD0BCFF)
 val OnPrimaryDark = Color(0xFF381E72)
 val PrimaryContainerDark = Color(0xFF4F378B)
@@ -38,22 +29,12 @@ val OnSecondaryDark = Color(0xFF332D41)
 val SecondaryContainerDark = Color(0xFF4A4458)
 val OnSecondaryContainerDark = Color(0xFFE8DEF8)
 
-val TertiaryDark = Color(0xFFEFB8C8)
-val OnTertiaryDark = Color(0xFF492532)
-val TertiaryContainerDark = Color(0xFF633B48)
-val OnTertiaryContainerDark = Color(0xFFFFD8E4)
-
 val BackgroundDark = Color(0xFF141218)
 val OnBackgroundDark = Color(0xFFE6E1E5)
 val SurfaceDark = Color(0xFF141218)
 val OnSurfaceDark = Color(0xFFE6E1E5)
 val SurfaceVariantDark = Color(0xFF49454F)
 val OnSurfaceVariantDark = Color(0xFFCAC4D0)
-val OutlineDark = Color(0xFF938F99)
-val OutlineVariantDark = Color(0xFF49454F)
 
-// Status colors
 val GreenSuccess = Color(0xFF22C55E)
-val GreenSuccessContainer = Color(0xFFDCFCE7)
 val RedDestructive = Color(0xFFBA1A1A)
-val RedDestructiveContainer = Color(0xFFFFDAD6)

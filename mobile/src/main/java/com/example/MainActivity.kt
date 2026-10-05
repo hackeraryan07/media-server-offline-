@@ -3,9 +3,9 @@ package com.example
 import android.Manifest
 import android.content.ContentUris
 import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
-import android.net.wifi.WifiManager
 import android.os.Build
 import android.os.Bundle
 import android.provider.MediaStore
@@ -17,36 +17,29 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
-import androidx.core.content.ContextCompat
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.pager.HorizontalPager
-import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.Menu
-import androidx.compose.material.icons.filled.Folder
-import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.Star
-import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Clear
-import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.outlined.Dns
+import androidx.compose.material.icons.outlined.PlaylistPlay
+import androidx.compose.material.icons.outlined.VideoLibrary
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -54,23 +47,26 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
-import com.bumptech.glide.integration.compose.GlideImage
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
+import com.bumptech.glide.integration.compose.ExperimentalGlideComposeApi
+import com.bumptech.glide.integration.compose.GlideImage
+import com.example.db.AppDatabase
+import com.example.db.Playlist
+import com.example.db.PlaylistItem
 import com.example.server.LocalVideoServer
-import com.example.server.NsdServerPublisher
 import com.example.server.ServerManager
 import com.example.server.ServerService
-import android.content.Intent
+import com.example.ui.theme.GreenSuccess
 import com.example.ui.theme.MyApplicationTheme
-import kotlinx.coroutines.delay
-import androidx.compose.material.icons.filled.Tv
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -85,30 +81,23 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             MyApplicationTheme {
-                Scaffold(
-                    modifier = Modifier.fillMaxSize()
-                ) { innerPadding ->
-                    ServerDashboardScreen(
-                        modifier = Modifier.padding(innerPadding)
-                    )
-                }
+                ServerDashboardScreen()
             }
         }
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalGlideComposeApi::class)
 @Composable
-fun ServerDashboardScreen(
-    modifier: Modifier = Modifier
-) {
+fun ServerDashboardScreen() {
     val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
+
     var isServerRunning by remember { mutableStateOf(ServerManager.isServerRunning) }
     var serverAddress by remember { mutableStateOf(ServerManager.serverAddress) }
     var errorMessage by remember { mutableStateOf(ServerManager.errorMessage) }
     var videoList by remember { mutableStateOf(ServerManager.localVideoServer?.getVideosList() ?: emptyList()) }
     var currentPage by remember { mutableIntStateOf(0) }
-    val coroutineScope = rememberCoroutineScope()
     var selectedFolder by remember { mutableStateOf<String?>(null) }
     var connectedClients by remember { mutableStateOf(ServerManager.localVideoServer?.getConnectedClients() ?: emptyList()) }
     var searchQuery by remember { mutableStateOf("") }
@@ -150,7 +139,6 @@ fun ServerDashboardScreen(
         }
     }
 
-    // Visual media picker contract (completely permission-free for media retrieval!)
     val pickMediaLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickVisualMedia()
     ) { uri: Uri? ->
@@ -162,572 +150,388 @@ fun ServerDashboardScreen(
         }
     }
 
-    Box(
-        modifier = modifier
-            .fillMaxSize()
-            .background(Color(0xFFF7F2FA)) // ThemeBackground
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(bottom = 80.dp) // Leave elegant room for Bottom Navigation simulation
-        ) {
-            // Top Custom Premium App Bar
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 12.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    IconButton(onClick = {}) {
-                        Icon(
-                            imageVector = Icons.Default.Menu,
-                            contentDescription = "Menu icon",
-                            tint = Color(0xFF1C1B1F)
+    Scaffold(
+        modifier = Modifier.fillMaxSize(),
+        topBar = {
+            TopAppBar(
+                title = {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Surface(
+                            shape = CircleShape,
+                            color = MaterialTheme.colorScheme.primaryContainer,
+                            modifier = Modifier.size(36.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    imageVector = Icons.Default.Sensors,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                        }
+                        Text(
+                            text = "StreamServer",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold
                         )
                     }
-                    Text(
-                        text = "StreamServer",
-                        fontSize = 20.sp,
-                        fontWeight = FontWeight.Medium,
-                        color = Color(0xFF1C1B1F)
+                },
+                actions = {
+                    IconButton(
+                        onClick = {
+                            context.startActivity(Intent(context, SettingsActivity::class.java))
+                        },
+                        modifier = Modifier.minimumInteractiveComponentSize()
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Settings,
+                            contentDescription = "Open Settings",
+                            tint = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    titleContentColor = MaterialTheme.colorScheme.onSurface
+                )
+            )
+        },
+        bottomBar = {
+            NavigationBar(
+                containerColor = MaterialTheme.colorScheme.surface,
+                tonalElevation = 3.dp,
+                windowInsets = WindowInsets.navigationBars
+            ) {
+                NavigationBarItem(
+                    selected = currentPage == 0,
+                    onClick = { currentPage = 0 },
+                    icon = {
+                        Icon(
+                            imageVector = if (currentPage == 0) Icons.Default.Dns else Icons.Outlined.Dns,
+                            contentDescription = "Server tab"
+                        )
+                    },
+                    label = { Text("Server") },
+                    colors = NavigationBarItemDefaults.colors(
+                        selectedIconColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                        indicatorColor = MaterialTheme.colorScheme.primaryContainer,
+                        selectedTextColor = MaterialTheme.colorScheme.primary,
+                        unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant
                     )
-                }
-
-                IconButton(onClick = {
-                    context.startActivity(android.content.Intent(context, SettingsActivity::class.java))
-                }) {
-                    Icon(
-                        imageVector = Icons.Default.Settings,
-                        contentDescription = "Settings icon",
-                        tint = Color(0xFF1C1B1F)
+                )
+                NavigationBarItem(
+                    selected = currentPage == 1,
+                    onClick = { currentPage = 1 },
+                    icon = {
+                        Icon(
+                            imageVector = if (currentPage == 1) Icons.Default.VideoLibrary else Icons.Outlined.VideoLibrary,
+                            contentDescription = "Library tab"
+                        )
+                    },
+                    label = { Text("Library") },
+                    colors = NavigationBarItemDefaults.colors(
+                        selectedIconColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                        indicatorColor = MaterialTheme.colorScheme.primaryContainer,
+                        selectedTextColor = MaterialTheme.colorScheme.primary,
+                        unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant
                     )
-                }
+                )
+                NavigationBarItem(
+                    selected = currentPage == 2,
+                    onClick = { currentPage = 2 },
+                    icon = {
+                        Icon(
+                            imageVector = if (currentPage == 2) Icons.Default.PlaylistPlay else Icons.Outlined.PlaylistPlay,
+                            contentDescription = "Playlists tab"
+                        )
+                    },
+                    label = { Text("Playlists") },
+                    colors = NavigationBarItemDefaults.colors(
+                        selectedIconColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                        indicatorColor = MaterialTheme.colorScheme.primaryContainer,
+                        selectedTextColor = MaterialTheme.colorScheme.primary,
+                        unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                )
             }
-
-            // Scrollable Content
-
+        },
+        floatingActionButton = {
+            if (currentPage == 1) {
+                ExtendedFloatingActionButton(
+                    onClick = {
+                        pickMediaLauncher.launch(
+                            PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly)
+                        )
+                    },
+                    icon = { Icon(Icons.Default.Add, contentDescription = "Add video") },
+                    text = { Text("Add Video") },
+                    containerColor = MaterialTheme.colorScheme.primaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                )
+            }
+        }
+    ) { innerPadding ->
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(innerPadding)
+                .background(MaterialTheme.colorScheme.surface)
+        ) {
             Box(
                 modifier = Modifier
-                    .weight(1f)
-                    .padding(horizontal = 16.dp)
+                    .fillMaxSize()
+                    .widthIn(max = 680.dp)
+                    .align(Alignment.TopCenter)
+                    .padding(horizontal = 16.dp, vertical = 8.dp)
             ) {
-                Column(modifier = Modifier.fillMaxSize()) {
-                    if (currentPage == 0) {
-                        // SERVER TAB CONTENT
-                    // Server Active/Offline Control Card (Central sections)
-                    Card(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(bottom = 20.dp),
-                    shape = RoundedCornerShape(28.dp),
-                    colors = CardDefaults.cardColors(
-                        containerColor = if (isServerRunning) Color(0xFFEADDFF) else Color(0xFFF3EDF7)
-                    ),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
-                ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(24.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        // Stack/Server circle badge
-                        Box(
-                            modifier = Modifier
-                                .size(64.dp)
-                                .background(
-                                    color = if (isServerRunning) Color(0xFF21005D) else Color(0xFF49454F),
-                                    shape = RoundedCornerShape(32.dp)
-                                ),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Refresh,
-                                contentDescription = "Server Network Icon",
-                                tint = Color.White,
-                                modifier = Modifier.size(32.dp)
-                            )
-                        }
-
-                        Spacer(modifier = Modifier.height(16.dp))
-
-                        if (isServerRunning && serverAddress != null) {
-                            Text(
-                                text = "Local Server Active",
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 18.sp,
-                                color = Color(0xFF21005D)
-                            )
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Text(
-                                text = "http://$serverAddress",
-                                fontSize = 13.sp,
-                                fontFamily = FontFamily.Monospace,
-                                color = Color(0xFF49454F)
-                            )
-                            Text(
-                                text = "Local Discovery Name: MobileStreamServer",
-                                fontSize = 11.sp,
-                                color = Color(0xFF49454F).copy(alpha = 0.8f)
-                            )
-                        } else {
-                            Text(
-                                text = "Server Offline",
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 18.sp,
-                                color = Color(0xFF49454F)
-                            )
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Text(
-                                text = "Tap button below to host Wi-Fi streams",
-                                fontSize = 13.sp,
-                                color = Color(0xFF49454F).copy(alpha = 0.9f)
-                            )
-                        }
-
-                        if (errorMessage != null) {
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Text(
-                                text = "Note: $errorMessage",
-                                color = MaterialTheme.colorScheme.error,
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                        }
-
-                        Spacer(modifier = Modifier.height(20.dp))
-
-                        Button(
-                            onClick = {
-                                val intent = Intent(context, ServerService::class.java).apply {
-                                    action = if (ServerManager.isServerRunning) ServerService.ACTION_STOP else ServerService.ACTION_START
-                                }
-                                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !ServerManager.isServerRunning) {
-                                    context.startForegroundService(intent)
-                                } else {
-                                    context.startService(intent)
-                                }
-                            },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(48.dp)
-                                .testTag("server_toggle_button"),
-                            shape = RoundedCornerShape(24.dp),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = if (isServerRunning) Color(0xFF6750A4) else Color(0xFF21005D),
-                                contentColor = Color.White
-                            )
-                        ) {
-                            Text(
-                                text = if (isServerRunning) "Stop Server" else "Start Server",
-                                fontWeight = FontWeight.Medium,
-                                fontSize = 15.sp
-                            )
-                        }
-                    }
-                }
-
-                // Discovered TV Units Section (Adding outstanding visual fidelity matching HTML mock!)
-                    Text(
-                        text = "Connected TV Units",
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color(0xFF49454F),
-                        letterSpacing = 1.2.sp,
-                        modifier = Modifier.padding(start = 4.dp, bottom = 12.dp)
-                    )
-
-                    if (connectedClients.isEmpty()) {
-                        Card(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(bottom = 10.dp),
-                            shape = RoundedCornerShape(16.dp),
-                            colors = CardDefaults.cardColors(containerColor = Color.White),
-                            border = BorderStroke(1.dp, Color(0xFFCAC4D0))
-                        ) {
-                            Text(
-                                text = "No units currently streaming",
-                                modifier = Modifier.padding(16.dp),
-                                fontSize = 14.sp,
-                                color = Color(0xFF49454F)
-                            )
-                        }
-                    } else {
-                        LazyColumn(
-                            verticalArrangement = Arrangement.spacedBy(10.dp),
-                            modifier = Modifier.fillMaxWidth().weight(1f)
-                        ) {
-                            items(connectedClients) { client ->
+                AnimatedContent(
+                    targetState = currentPage,
+                    transitionSpec = {
+                        fadeIn(animationSpec = tween(220)) togetherWith fadeOut(animationSpec = tween(180))
+                    },
+                    label = "TabTransition"
+                ) { targetPage ->
+                    when (targetPage) {
+                        0 -> {
+                            // SERVER TAB
+                            Column(
+                                modifier = Modifier.fillMaxSize(),
+                                verticalArrangement = Arrangement.spacedBy(16.dp)
+                            ) {
+                                // Server Active/Offline Control Card
                                 Card(
-                                    modifier = Modifier.fillMaxWidth().clickable {
-                                        selectedTvIp = client.ip
-                                    },
-                                    shape = RoundedCornerShape(16.dp),
-                                    colors = CardDefaults.cardColors(containerColor = Color.White),
-                                    border = BorderStroke(1.dp, Color(0xFFCAC4D0))
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = RoundedCornerShape(28.dp),
+                                    colors = CardDefaults.cardColors(
+                                        containerColor = if (isServerRunning) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                                    ),
+                                    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
                                 ) {
-                                    Row(
+                                    Column(
                                         modifier = Modifier
                                             .fillMaxWidth()
-                                            .padding(14.dp),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.SpaceBetween
+                                            .padding(24.dp),
+                                        horizontalAlignment = Alignment.CenterHorizontally
                                     ) {
-                                        Row(verticalAlignment = Alignment.CenterVertically) {
-                                            Box(
-                                                modifier = Modifier
-                                                    .size(44.dp)
-                                                    .background(Color(0xFFF3EDF7), shape = RoundedCornerShape(12.dp)),
-                                                contentAlignment = Alignment.Center
-                                            ) {
-                                                Icon(
-                                                    imageVector = Icons.Default.PlayArrow,
-                                                    contentDescription = "TV",
-                                                    tint = Color(0xFF6750A4)
-                                                )
-                                            }
-                                            Spacer(modifier = Modifier.width(14.dp))
-                                            Column {
-                                                Text(
-                                                    text = "${client.name} (${client.ip})",
-                                                    fontWeight = FontWeight.SemiBold,
-                                                    fontSize = 14.sp,
-                                                    color = Color(0xFF1C1B1F)
-                                                )
-                                                Text(
-                                                    text = "Streaming Active",
-                                                    fontWeight = FontWeight.Bold,
-                                                    fontSize = 11.sp,
-                                                    color = Color(0xFF22C55E)
-                                                )
-                                            }
-                                        }
                                         Box(
                                             modifier = Modifier
-                                                .size(8.dp)
-                                                .background(Color(0xFF22C55E), shape = RoundedCornerShape(4.dp))
+                                                .size(64.dp)
+                                                .background(
+                                                    color = if (isServerRunning) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
+                                                    shape = CircleShape
+                                                ),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Icon(
+                                                imageVector = if (isServerRunning) Icons.Default.Wifi else Icons.Default.WifiOff,
+                                                contentDescription = "Server Network Icon",
+                                                tint = MaterialTheme.colorScheme.onPrimary,
+                                                modifier = Modifier.size(32.dp)
+                                            )
+                                        }
+
+                                        Spacer(modifier = Modifier.height(16.dp))
+
+                                        if (isServerRunning && serverAddress != null) {
+                                            Text(
+                                                text = "Local Server Active",
+                                                fontWeight = FontWeight.Bold,
+                                                style = MaterialTheme.typography.titleLarge,
+                                                color = MaterialTheme.colorScheme.onPrimaryContainer
+                                            )
+                                            Spacer(modifier = Modifier.height(4.dp))
+                                            Text(
+                                                text = "http://$serverAddress",
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                fontFamily = FontFamily.Monospace,
+                                                color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.85f)
+                                            )
+                                            Spacer(modifier = Modifier.height(2.dp))
+                                            Text(
+                                                text = "Local Discovery: MobileStreamServer",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
+                                            )
+                                        } else {
+                                            Text(
+                                                text = "Server Offline",
+                                                fontWeight = FontWeight.Bold,
+                                                style = MaterialTheme.typography.titleLarge,
+                                                color = MaterialTheme.colorScheme.onSurface
+                                            )
+                                            Spacer(modifier = Modifier.height(4.dp))
+                                            Text(
+                                                text = "Tap the button below to stream videos to TV",
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
+
+                                        if (errorMessage != null) {
+                                            Spacer(modifier = Modifier.height(8.dp))
+                                            Text(
+                                                text = "Note: $errorMessage",
+                                                color = MaterialTheme.colorScheme.error,
+                                                style = MaterialTheme.typography.bodySmall,
+                                                fontWeight = FontWeight.SemiBold
+                                            )
+                                        }
+
+                                        Spacer(modifier = Modifier.height(20.dp))
+
+                                        Button(
+                                            onClick = {
+                                                val intent = Intent(context, ServerService::class.java).apply {
+                                                    action = if (ServerManager.isServerRunning) ServerService.ACTION_STOP else ServerService.ACTION_START
+                                                }
+                                                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !ServerManager.isServerRunning) {
+                                                    context.startForegroundService(intent)
+                                                } else {
+                                                    context.startService(intent)
+                                                }
+                                            },
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .height(48.dp)
+                                                .testTag("server_toggle_button"),
+                                            shape = RoundedCornerShape(24.dp),
+                                            colors = ButtonDefaults.buttonColors(
+                                                containerColor = if (isServerRunning) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.secondary,
+                                                contentColor = MaterialTheme.colorScheme.onPrimary
+                                            )
+                                        ) {
+                                            Text(
+                                                text = if (isServerRunning) "Stop Server" else "Start Server",
+                                                fontWeight = FontWeight.Medium,
+                                                fontSize = 15.sp
+                                            )
+                                        }
+                                    }
+                                }
+
+                                // Connected TV Units Section
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Text(
+                                        text = "CONNECTED TV UNITS",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        letterSpacing = 1.2.sp
+                                    )
+                                    if (connectedClients.isNotEmpty()) {
+                                        Text(
+                                            text = "${connectedClients.size} active",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = GreenSuccess
                                         )
                                     }
                                 }
-                            }
-                        }
-                    }
-                } else if (currentPage == 1) { // LIBRARY TAB CONTENT
-                    // Elegant Outlined Search Bar at the top of Library
-                    OutlinedTextField(
-                        value = searchQuery,
-                        onValueChange = { searchQuery = it },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(bottom = 16.dp)
-                            .testTag("library_search_input"),
-                        placeholder = { Text("Search shared media...", color = Color(0xFF49454F).copy(alpha = 0.7f)) },
-                        leadingIcon = {
-                            Icon(
-                                imageVector = Icons.Default.Search,
-                                contentDescription = "Search icon",
-                                tint = Color(0xFF6750A4)
-                            )
-                        },
-                        trailingIcon = {
-                            if (searchQuery.isNotEmpty()) {
-                                IconButton(onClick = { searchQuery = "" }) {
-                                    Icon(
-                                        imageVector = Icons.Default.Clear,
-                                        contentDescription = "Clear search",
-                                        tint = Color(0xFF49454F)
-                                    )
-                                }
-                            }
-                        },
-                        singleLine = true,
-                        shape = RoundedCornerShape(28.dp),
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = Color(0xFF6750A4),
-                            unfocusedBorderColor = Color(0xFFCAC4D0),
-                            focusedContainerColor = Color.White,
-                            unfocusedContainerColor = Color.White
-                        )
-                    )
 
-                    if (searchQuery.isNotEmpty()) {
-                        // Global search filtering across all folders
-                        val searchResults = videoList.filter { it.title.contains(searchQuery, ignoreCase = true) }
-                        
-                        Text(
-                            text = "Search Results (${searchResults.size})",
-                            fontSize = 16.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color(0xFF1C1B1F),
-                            modifier = Modifier.padding(bottom = 12.dp)
-                        )
-
-                        if (searchResults.isEmpty()) {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .weight(1f),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                    Icon(
-                                        imageVector = Icons.Default.Search,
-                                        contentDescription = "No results",
-                                        tint = Color(0xFF49454F).copy(alpha = 0.5f),
-                                        modifier = Modifier.size(48.dp)
-                                    )
-                                    Spacer(modifier = Modifier.height(12.dp))
-                                    Text(
-                                        text = "No matching videos found.",
-                                        color = Color(0xFF49454F),
-                                        fontSize = 14.sp
-                                    )
-                                }
-                            }
-                        } else {
-                            LazyColumn(
-                                modifier = Modifier.weight(1f),
-                                verticalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                items(searchResults) { video ->
+                                if (connectedClients.isEmpty()) {
                                     Card(
-                                        modifier = Modifier.fillMaxWidth().clickable { showDevicePopupForVideo = video },
-                                        shape = RoundedCornerShape(16.dp),
-                                        colors = CardDefaults.cardColors(containerColor = Color.White),
-                                        border = BorderStroke(1.dp, Color(0xFFCAC4D0))
+                                        modifier = Modifier.fillMaxWidth(),
+                                        shape = RoundedCornerShape(20.dp),
+                                        colors = CardDefaults.cardColors(
+                                            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
+                                        ),
+                                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
                                     ) {
                                         Row(
                                             modifier = Modifier
-                                                .fillMaxWidth()
-                                                .padding(12.dp),
+                                                .padding(20.dp)
+                                                .fillMaxWidth(),
                                             verticalAlignment = Alignment.CenterVertically
                                         ) {
-                                            Box(
-                                                modifier = Modifier
-                                                    .size(50.dp)
-                                                    .background(
-                                                        color = if (video.isLocal) Color(0xFFEADDFF) else Color(0xFFD3E3FD),
-                                                        shape = RoundedCornerShape(8.dp)
-                                                    ),
-                                                contentAlignment = Alignment.Center
-                                            ) {
-                                                if (video.thumbnailUrl.isNotEmpty()) {
-                                                    @OptIn(com.bumptech.glide.integration.compose.ExperimentalGlideComposeApi::class)
-                                                    GlideImage(
-                                                        model = video.thumbnailUrl,
-                                                        contentDescription = "Thumbnail",
-                                                        contentScale = ContentScale.Crop,
-                                                        modifier = Modifier.fillMaxSize()
-                                                    )
-                                                } else {
-                                                    Icon(
-                                                        imageVector = Icons.Default.PlayArrow,
-                                                        contentDescription = "Play icon",
-                                                        tint = if (video.isLocal) Color(0xFF21005D) else Color(0xFF001D35)
-                                                    )
-                                                }
-                                            }
-
-                                            Spacer(modifier = Modifier.width(14.dp))
-
-                                            Column(modifier = Modifier.weight(1f)) {
-                                                Text(
-                                                    text = video.title,
-                                                    fontWeight = FontWeight.SemiBold,
-                                                    fontSize = 14.sp,
-                                                    color = Color(0xFF1C1B1F),
-                                                    maxLines = 1,
-                                                    overflow = TextOverflow.Ellipsis
-                                                )
-                                                Text(
-                                                    text = if (video.isLocal) {
-                                                        "Local file shared • size: ${formatBytes(video.size)}"
-                                                    } else {
-                                                        "Cloud video • Sync: ${video.duration}"
-                                                    },
-                                                    fontSize = 11.sp,
-                                                    color = Color(0xFF49454F)
-                                                )
-                                                if (video.totalDuration > 0L && video.watchedPosition > 0L) {
-                                                    Spacer(modifier = Modifier.height(6.dp))
-                                                    LinearProgressIndicator(
-                                                        progress = (video.watchedPosition.toFloat() / video.totalDuration.toFloat()).coerceIn(0f, 1f),
-                                                        modifier = Modifier.fillMaxWidth().height(4.dp),
-                                                        color = Color(0xFFE11D48),
-                                                        trackColor = Color(0xFFFFD1D1)
-                                                    )
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    } else {
-                        // Regular flow: folder view or standard folder-specific video list
-                        if (selectedFolder == null) {
-                            Text(
-                                text = "Library Folders",
-                                fontSize = 16.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Color(0xFF1C1B1F),
-                                modifier = Modifier.padding(bottom = 12.dp)
-                            )
-
-                            val folderGroups = videoList.groupBy { it.folder ?: "Videos" }
-                            val allFolders = listOf("All Videos") + folderGroups.keys.toList()
-
-                            LazyVerticalGrid(
-                                columns = GridCells.Fixed(2),
-                                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                                verticalArrangement = Arrangement.spacedBy(12.dp),
-                                modifier = Modifier.weight(1f)
-                            ) {
-                                items(allFolders) { folderName ->
-                                    Card(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .aspectRatio(1f)
-                                            .clickable { selectedFolder = folderName },
-                                        colors = CardDefaults.cardColors(containerColor = Color(0xFFEADDFF)),
-                                        shape = RoundedCornerShape(16.dp)
-                                    ) {
-                                        Column(
-                                            horizontalAlignment = Alignment.CenterHorizontally,
-                                            verticalArrangement = Arrangement.Center,
-                                            modifier = Modifier.fillMaxSize()
-                                        ) {
                                             Icon(
-                                                imageVector = Icons.Default.Folder,
-                                                contentDescription = "Folder",
-                                                tint = Color(0xFF21005D),
-                                                modifier = Modifier.size(48.dp)
+                                                imageVector = Icons.Default.Tv,
+                                                contentDescription = null,
+                                                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                                                modifier = Modifier.size(32.dp)
                                             )
-                                            Spacer(modifier = Modifier.height(12.dp))
-                                            Text(
-                                                text = folderName,
-                                                fontWeight = FontWeight.Bold,
-                                                fontSize = 14.sp,
-                                                color = Color(0xFF21005D)
-                                            )
-                                            val count = if (folderName == "All Videos") videoList.size else folderGroups[folderName]?.size ?: 0
-                                            Text(
-                                                text = "$count videos",
-                                                fontSize = 12.sp,
-                                                color = Color(0xFF21005D).copy(alpha = 0.8f)
-                                            )
+                                            Spacer(modifier = Modifier.width(16.dp))
+                                            Column {
+                                                Text(
+                                                    text = "No TV clients connected",
+                                                    style = MaterialTheme.typography.bodyMedium,
+                                                    fontWeight = FontWeight.SemiBold,
+                                                    color = MaterialTheme.colorScheme.onSurface
+                                                )
+                                                Text(
+                                                    text = "Launch TV client on same Wi-Fi to start streaming",
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                )
+                                            }
                                         }
                                     }
-                                }
-                            }
-                        } else {
-                            Row(
-                                modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.clickable { selectedFolder = null }) {
-                                    Icon(Icons.Default.ArrowBack, contentDescription = "Back")
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    Text(
-                                        text = selectedFolder ?: "",
-                                        fontSize = 16.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = Color(0xFF1C1B1F)
-                                    )
-                                }
-                            }
-
-                            val displayedVideos = if (selectedFolder == "All Videos") {
-                                videoList
-                            } else {
-                                videoList.filter { (it.folder ?: "Videos") == selectedFolder }
-                            }
-
-                            if (displayedVideos.isEmpty()) {
-                                Box(modifier = Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
-                                    Text("No videos in this folder.", color = Color(0xFF49454F))
-                                }
-                            } else {
-                                LazyColumn(
-                                    modifier = Modifier.weight(1f),
-                                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                                ) {
-                                    items(displayedVideos) { video ->
-                                        Card(
-                                            modifier = Modifier.fillMaxWidth().clickable { showDevicePopupForVideo = video },
-                                            shape = RoundedCornerShape(16.dp),
-                                            colors = CardDefaults.cardColors(containerColor = Color.White),
-                                            border = BorderStroke(1.dp, Color(0xFFCAC4D0))
-                                        ) {
-                                            Row(
+                                } else {
+                                    LazyColumn(
+                                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                                        modifier = Modifier.fillMaxWidth().weight(1f)
+                                    ) {
+                                        items(connectedClients) { client ->
+                                            Card(
                                                 modifier = Modifier
                                                     .fillMaxWidth()
-                                                    .padding(12.dp),
-                                                verticalAlignment = Alignment.CenterVertically
+                                                    .clickable { selectedTvIp = client.ip },
+                                                shape = RoundedCornerShape(18.dp),
+                                                colors = CardDefaults.cardColors(
+                                                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
+                                                ),
+                                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
                                             ) {
-                                                Box(
+                                                Row(
                                                     modifier = Modifier
-                                                        .size(50.dp)
-                                                        .background(
-                                                            color = if (video.isLocal) Color(0xFFEADDFF) else Color(0xFFD3E3FD),
-                                                            shape = RoundedCornerShape(8.dp)
-                                                        ),
-                                                    contentAlignment = Alignment.Center
+                                                        .fillMaxWidth()
+                                                        .padding(16.dp),
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.SpaceBetween
                                                 ) {
-                                                    if (video.thumbnailUrl.isNotEmpty()) {
-                                                        @OptIn(com.bumptech.glide.integration.compose.ExperimentalGlideComposeApi::class)
-                                                        GlideImage(
-                                                            model = video.thumbnailUrl,
-                                                            contentDescription = "Thumbnail",
-                                                            contentScale = ContentScale.Crop,
-                                                            modifier = Modifier.fillMaxSize()
-                                                        )
-                                                    } else {
-                                                        Icon(
-                                                            imageVector = Icons.Default.PlayArrow,
-                                                            contentDescription = "Play icon",
-                                                            tint = if (video.isLocal) Color(0xFF21005D) else Color(0xFF001D35)
-                                                        )
+                                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                                        Box(
+                                                            modifier = Modifier
+                                                                .size(44.dp)
+                                                                .background(
+                                                                    MaterialTheme.colorScheme.primaryContainer,
+                                                                    CircleShape
+                                                                ),
+                                                            contentAlignment = Alignment.Center
+                                                        ) {
+                                                            Icon(
+                                                                imageVector = Icons.Default.Tv,
+                                                                contentDescription = "TV Unit",
+                                                                tint = MaterialTheme.colorScheme.onPrimaryContainer
+                                                            )
+                                                        }
+                                                        Spacer(modifier = Modifier.width(14.dp))
+                                                        Column {
+                                                            Text(
+                                                                text = "${client.name} (${client.ip})",
+                                                                fontWeight = FontWeight.SemiBold,
+                                                                style = MaterialTheme.typography.bodyMedium,
+                                                                color = MaterialTheme.colorScheme.onSurface
+                                                            )
+                                                            Text(
+                                                                text = "Streaming Active • Tap for Remote",
+                                                                style = MaterialTheme.typography.bodySmall,
+                                                                fontWeight = FontWeight.Medium,
+                                                                color = GreenSuccess
+                                                            )
+                                                        }
                                                     }
-                                                }
-
-                                                Spacer(modifier = Modifier.width(14.dp))
-
-                                                Column(modifier = Modifier.weight(1f)) {
-                                                    Text(
-                                                        text = video.title,
-                                                        fontWeight = FontWeight.SemiBold,
-                                                        fontSize = 14.sp,
-                                                        color = Color(0xFF1C1B1F),
-                                                        maxLines = 1,
-                                                        overflow = TextOverflow.Ellipsis
+                                                    Box(
+                                                        modifier = Modifier
+                                                            .size(10.dp)
+                                                            .background(GreenSuccess, CircleShape)
                                                     )
-                                                    Text(
-                                                        text = if (video.isLocal) {
-                                                            "Local file shared • size: ${formatBytes(video.size)}"
-                                                        } else {
-                                                            "Cloud video • Sync: ${video.duration}"
-                                                        },
-                                                        fontSize = 11.sp,
-                                                        color = Color(0xFF49454F)
-                                                    )
-                                                    if (video.totalDuration > 0L && video.watchedPosition > 0L) {
-                                                        Spacer(modifier = Modifier.height(6.dp))
-                                                        LinearProgressIndicator(
-                                                            progress = (video.watchedPosition.toFloat() / video.totalDuration.toFloat()).coerceIn(0f, 1f),
-                                                            modifier = Modifier.fillMaxWidth().height(4.dp),
-                                                            color = Color(0xFFE11D48),
-                                                            trackColor = Color(0xFFFFD1D1)
-                                                        )
-                                                    }
                                                 }
                                             }
                                         }
@@ -735,504 +539,630 @@ fun ServerDashboardScreen(
                                 }
                             }
                         }
-                    }
-                } else if (currentPage == 2) {
-                    val db = remember { com.example.db.AppDatabase.getDatabase(context) }
-                    val playlists by remember { db.playlistDao().getAllPlaylistsWithItemsFlow() }.collectAsState(initial = emptyList())
-                    var newPlaylistName by remember { mutableStateOf("") }
-                    
-                    var showAiDialog by remember { mutableStateOf(false) }
-                    
-                    Text(
-                        text = "Playlists & Queues",
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color(0xFF1C1B1F),
-                        modifier = Modifier.padding(bottom = 12.dp)
-                    )
-                    
-                    Row(modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp), verticalAlignment = Alignment.CenterVertically) {
-                        OutlinedTextField(
-                            value = newPlaylistName,
-                            onValueChange = { newPlaylistName = it },
-                            placeholder = { Text("New Playlist Name") },
-                            modifier = Modifier.weight(1f),
-                            singleLine = true,
-                            shape = RoundedCornerShape(16.dp),
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedBorderColor = Color(0xFF6750A4),
-                                unfocusedBorderColor = Color(0xFFCAC4D0),
-                                focusedContainerColor = Color.White,
-                                unfocusedContainerColor = Color.White
-                            )
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Button(
-                            onClick = {
-                                if (newPlaylistName.isNotBlank()) {
-                                    val name = newPlaylistName
-                                    newPlaylistName = ""
-                                    CoroutineScope(Dispatchers.IO).launch {
-                                        db.playlistDao().insertPlaylistSync(com.example.db.Playlist(name = name))
-                                    }
-                                }
-                            },
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF6750A4)),
-                            shape = RoundedCornerShape(16.dp)
-                        ) {
-                            Text("Create")
-                        }
-                    }
-                    
-                    Button(
-                        onClick = { showAiDialog = true },
-                        modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF21005D)),
-                        shape = RoundedCornerShape(16.dp)
-                    ) {
-                        Icon(Icons.Default.Star, contentDescription = "AI", modifier = Modifier.size(18.dp))
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("Generate Playlist with AI")
-                    }
-                    
-                    if (showAiDialog) {
-                        var aiPrompt by remember { mutableStateOf("") }
-                        var aiExpectedCount by remember { mutableStateOf("") }
-                        var aiLoading by remember { mutableStateOf(false) }
-                        var aiError by remember { mutableStateOf<String?>(null) }
-                        var generatedResult by remember { mutableStateOf<AiHelper.AiPlaylistResult?>(null) }
-                        var decidedPlaylistName by remember { mutableStateOf("") }
-                        val coroutineScope = rememberCoroutineScope()
-                        
-                        AlertDialog(
-                            onDismissRequest = { if (!aiLoading) showAiDialog = false },
-                            title = {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(
-                                        Icons.Default.Star,
-                                        contentDescription = null,
-                                        tint = MaterialTheme.colorScheme.primary,
-                                        modifier = Modifier.size(22.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    Text(
-                                        if (generatedResult == null) "Generate Playlist with AI" else "AI Decided Playlist",
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                }
-                            },
-                            text = {
-                                Column(modifier = Modifier.fillMaxWidth()) {
-                                    if (generatedResult == null) {
-                                        Text(
-                                            "Describe what you want (e.g. 'all 200 taarak mehta episodes in ascending order'). AI will arrange all episodes in order and suggest a creative name.",
-                                            fontSize = 13.sp,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        1 -> {
+                            // LIBRARY TAB
+                            Column(
+                                modifier = Modifier.fillMaxSize(),
+                                verticalArrangement = Arrangement.spacedBy(14.dp)
+                            ) {
+                                OutlinedTextField(
+                                    value = searchQuery,
+                                    onValueChange = { searchQuery = it },
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .testTag("library_search_input"),
+                                    placeholder = { Text("Search shared media...") },
+                                    leadingIcon = {
+                                        Icon(
+                                            imageVector = Icons.Default.Search,
+                                            contentDescription = "Search icon",
+                                            tint = MaterialTheme.colorScheme.primary
                                         )
-                                        Spacer(modifier = Modifier.height(10.dp))
-                                        OutlinedTextField(
-                                            value = aiPrompt,
-                                            onValueChange = { aiPrompt = it },
-                                            label = { Text("What should AI create?") },
-                                            placeholder = { Text("E.g. all 200 episodes in ascending order") },
-                                            modifier = Modifier.fillMaxWidth(),
-                                            enabled = !aiLoading,
-                                            shape = RoundedCornerShape(12.dp)
-                                        )
-                                        Spacer(modifier = Modifier.height(8.dp))
-                                        OutlinedTextField(
-                                            value = aiExpectedCount,
-                                            onValueChange = { if (it.all { char -> char.isDigit() }) aiExpectedCount = it },
-                                            label = { Text("Episode / Video Count (Optional)") },
-                                            placeholder = { Text("E.g. 200 (or specify in prompt)") },
-                                            singleLine = true,
-                                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                                            modifier = Modifier.fillMaxWidth(),
-                                            enabled = !aiLoading,
-                                            shape = RoundedCornerShape(12.dp)
-                                        )
-                                        Spacer(modifier = Modifier.height(6.dp))
-                                        Text(
-                                            "💡 Tip: Stating the episode count verifies that all videos are returned with zero missing episodes.",
-                                            fontSize = 11.sp,
-                                            color = MaterialTheme.colorScheme.primary
-                                        )
-                                    } else {
-                                        Text(
-                                            "AI suggested title for this playlist. You can keep it or edit it before saving:",
-                                            fontSize = 13.sp,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                        Spacer(modifier = Modifier.height(8.dp))
-                                        OutlinedTextField(
-                                            value = decidedPlaylistName,
-                                            onValueChange = { decidedPlaylistName = it },
-                                            label = { Text("Playlist Name (Suggested by AI)") },
-                                            singleLine = true,
-                                            modifier = Modifier.fillMaxWidth(),
-                                            shape = RoundedCornerShape(12.dp)
-                                        )
-                                        Spacer(modifier = Modifier.height(10.dp))
-                                        Card(
-                                            modifier = Modifier.fillMaxWidth(),
-                                            colors = CardDefaults.cardColors(
-                                                containerColor = if (generatedResult!!.isVerified) Color(0xFFE8F5E9) else MaterialTheme.colorScheme.surfaceVariant
-                                            ),
-                                            shape = RoundedCornerShape(10.dp),
-                                            border = androidx.compose.foundation.BorderStroke(
-                                                1.dp,
-                                                if (generatedResult!!.isVerified) Color(0xFFA5D6A7) else Color.Transparent
-                                            )
-                                        ) {
-                                            Column(modifier = Modifier.padding(10.dp)) {
-                                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                                    Icon(
-                                                        Icons.Default.CheckCircle,
-                                                        contentDescription = "Verified",
-                                                        tint = if (generatedResult!!.isVerified) Color(0xFF2E7D32) else MaterialTheme.colorScheme.primary,
-                                                        modifier = Modifier.size(18.dp)
-                                                    )
-                                                    Spacer(modifier = Modifier.width(6.dp))
-                                                    Text(
-                                                        text = generatedResult!!.verificationBadge,
-                                                        fontWeight = FontWeight.Bold,
-                                                        fontSize = 13.sp,
-                                                        color = if (generatedResult!!.isVerified) Color(0xFF1B5E20) else MaterialTheme.colorScheme.onSurface
-                                                    )
-                                                }
-                                                if (generatedResult!!.verificationDetails.isNotBlank()) {
-                                                    Spacer(modifier = Modifier.height(4.dp))
-                                                    Text(
-                                                        text = generatedResult!!.verificationDetails,
-                                                        fontSize = 11.sp,
-                                                        color = if (generatedResult!!.isVerified) Color(0xFF2E7D32) else MaterialTheme.colorScheme.onSurfaceVariant
-                                                    )
-                                                }
+                                    },
+                                    trailingIcon = {
+                                        if (searchQuery.isNotEmpty()) {
+                                            IconButton(
+                                                onClick = { searchQuery = "" },
+                                                modifier = Modifier.minimumInteractiveComponentSize()
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Default.Clear,
+                                                    contentDescription = "Clear search",
+                                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                                )
                                             }
                                         }
-                                        Spacer(modifier = Modifier.height(10.dp))
+                                    },
+                                    singleLine = true,
+                                    shape = RoundedCornerShape(28.dp)
+                                )
+
+                                if (searchQuery.isNotEmpty()) {
+                                    val searchResults = videoList.filter { it.title.contains(searchQuery, ignoreCase = true) }
+                                    Text(
+                                        text = "Search Results (${searchResults.size})",
+                                        style = MaterialTheme.typography.titleSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+
+                                    if (searchResults.isEmpty()) {
+                                        Box(
+                                            modifier = Modifier.fillMaxWidth().weight(1f),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                                Icon(
+                                                    imageVector = Icons.Default.SearchOff,
+                                                    contentDescription = "No results",
+                                                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                                                    modifier = Modifier.size(48.dp)
+                                                )
+                                                Spacer(modifier = Modifier.height(12.dp))
+                                                Text(
+                                                    text = "No matching videos found.",
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                    style = MaterialTheme.typography.bodyMedium
+                                                )
+                                            }
+                                        }
+                                    } else {
+                                        LazyColumn(
+                                            modifier = Modifier.weight(1f),
+                                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                                        ) {
+                                            items(searchResults) { video ->
+                                                VideoItemRow(
+                                                    video = video,
+                                                    onClick = { showDevicePopupForVideo = video }
+                                                )
+                                            }
+                                        }
+                                    }
+                                } else {
+                                    // Folder view or video list
+                                    if (selectedFolder == null) {
                                         Text(
-                                            "Playlist Episodes (${generatedResult!!.ids.size} videos in order):",
-                                            fontWeight = FontWeight.SemiBold,
-                                            fontSize = 13.sp,
+                                            text = "Media Folders",
+                                            style = MaterialTheme.typography.titleMedium,
+                                            fontWeight = FontWeight.Bold,
                                             color = MaterialTheme.colorScheme.onSurface
                                         )
-                                        Spacer(modifier = Modifier.height(6.dp))
-                                        Card(
-                                            modifier = Modifier.fillMaxWidth(),
-                                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
-                                            shape = RoundedCornerShape(8.dp)
+
+                                        val folderGroups = videoList.groupBy { it.folder ?: "Videos" }
+                                        val allFolders = listOf("All Videos") + folderGroups.keys.toList()
+
+                                        LazyVerticalGrid(
+                                            columns = GridCells.Fixed(2),
+                                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                            verticalArrangement = Arrangement.spacedBy(12.dp),
+                                            modifier = Modifier.weight(1f)
                                         ) {
-                                            val matched = generatedResult!!.ids.mapIndexed { idx, id ->
-                                                val v = videoList.find { it.id == id }
-                                                val title = v?.title ?: "Video $id"
-                                                "#${idx + 1}  $title"
-                                            }
-                                            LazyColumn(
-                                                modifier = Modifier
-                                                    .fillMaxWidth()
-                                                    .heightIn(max = 160.dp)
-                                                    .padding(8.dp),
-                                                verticalArrangement = Arrangement.spacedBy(4.dp)
-                                            ) {
-                                                items(matched) { itemText ->
-                                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                                        Icon(
-                                                            Icons.Default.PlayArrow,
-                                                            contentDescription = null,
-                                                            modifier = Modifier.size(14.dp),
-                                                            tint = MaterialTheme.colorScheme.primary
-                                                        )
-                                                        Spacer(modifier = Modifier.width(6.dp))
+                                            items(allFolders) { folderName ->
+                                                Card(
+                                                    modifier = Modifier
+                                                        .fillMaxWidth()
+                                                        .aspectRatio(1.1f)
+                                                        .clickable { selectedFolder = folderName },
+                                                    colors = CardDefaults.cardColors(
+                                                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                                                    ),
+                                                    shape = RoundedCornerShape(20.dp),
+                                                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                                                ) {
+                                                    Column(
+                                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                                        verticalArrangement = Arrangement.Center,
+                                                        modifier = Modifier.fillMaxSize().padding(12.dp)
+                                                    ) {
+                                                        Box(
+                                                            modifier = Modifier
+                                                                .size(48.dp)
+                                                                .background(
+                                                                    MaterialTheme.colorScheme.primaryContainer,
+                                                                    CircleShape
+                                                                ),
+                                                            contentAlignment = Alignment.Center
+                                                        ) {
+                                                            Icon(
+                                                                imageVector = Icons.Default.Folder,
+                                                                contentDescription = "Folder",
+                                                                tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                                                modifier = Modifier.size(26.dp)
+                                                            )
+                                                        }
+                                                        Spacer(modifier = Modifier.height(10.dp))
                                                         Text(
-                                                            itemText,
-                                                            fontSize = 12.sp,
+                                                            text = folderName,
+                                                            fontWeight = FontWeight.Bold,
+                                                            style = MaterialTheme.typography.bodyMedium,
+                                                            color = MaterialTheme.colorScheme.onSurface,
                                                             maxLines = 1,
                                                             overflow = TextOverflow.Ellipsis
                                                         )
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-
-                                    if (aiError != null) {
-                                        Spacer(modifier = Modifier.height(8.dp))
-                                        Text(aiError!!, color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
-                                    }
-                                    if (aiLoading) {
-                                        Spacer(modifier = Modifier.height(16.dp))
-                                        CircularProgressIndicator(modifier = Modifier.align(Alignment.CenterHorizontally))
-                                    }
-                                }
-                            },
-                            confirmButton = {
-                                if (generatedResult == null) {
-                                    Button(
-                                        onClick = {
-                                            if (aiPrompt.isNotBlank()) {
-                                                aiLoading = true
-                                                aiError = null
-                                                coroutineScope.launch {
-                                                    try {
-                                                        val userCount = aiExpectedCount.toIntOrNull()
-                                                        val aiResult = AiHelper.generatePlaylist(context, aiPrompt, userCount)
-                                                        if (aiResult.ids.isEmpty()) {
-                                                            aiError = "No matching videos found in your library."
-                                                            aiLoading = false
-                                                        } else {
-                                                            generatedResult = aiResult
-                                                            decidedPlaylistName = aiResult.name
-                                                            aiLoading = false
-                                                        }
-                                                    } catch (e: Exception) {
-                                                        aiError = e.message ?: "An error occurred."
-                                                        aiLoading = false
-                                                    }
-                                                }
-                                            }
-                                        },
-                                        enabled = !aiLoading && aiPrompt.isNotBlank()
-                                    ) {
-                                        Text("Generate")
-                                    }
-                                } else {
-                                    Button(
-                                        onClick = {
-                                            coroutineScope.launch {
-                                                try {
-                                                    val db = com.example.db.AppDatabase.getDatabase(context)
-                                                    val finalTitle = decidedPlaylistName.trim().ifBlank { "AI Playlist" }
-                                                    val newId = db.playlistDao().insertPlaylistSync(com.example.db.Playlist(name = finalTitle)).toInt()
-
-                                                    generatedResult!!.ids.forEachIndexed { index, vId ->
-                                                        db.playlistDao().insertPlaylistItemSync(
-                                                            com.example.db.PlaylistItem(
-                                                                playlistId = newId,
-                                                                videoId = vId,
-                                                                displayOrder = index
-                                                            )
+                                                        val count = if (folderName == "All Videos") videoList.size else folderGroups[folderName]?.size ?: 0
+                                                        Text(
+                                                            text = "$count videos",
+                                                            style = MaterialTheme.typography.bodySmall,
+                                                            color = MaterialTheme.colorScheme.onSurfaceVariant
                                                         )
                                                     }
-                                                    showAiDialog = false
-                                                } catch (e: Exception) {
-                                                    aiError = e.message ?: "Failed to save playlist."
+                                                }
+                                            }
+                                        }
+                                    } else {
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .clickable { selectedFolder = null }
+                                                .padding(vertical = 4.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                                contentDescription = "Back to folders",
+                                                tint = MaterialTheme.colorScheme.primary
+                                            )
+                                            Spacer(modifier = Modifier.width(8.dp))
+                                            Text(
+                                                text = selectedFolder ?: "",
+                                                style = MaterialTheme.typography.titleMedium,
+                                                fontWeight = FontWeight.Bold,
+                                                color = MaterialTheme.colorScheme.onSurface
+                                            )
+                                        }
+
+                                        val displayedVideos = if (selectedFolder == "All Videos") {
+                                            videoList
+                                        } else {
+                                            videoList.filter { (it.folder ?: "Videos") == selectedFolder }
+                                        }
+
+                                        if (displayedVideos.isEmpty()) {
+                                            Box(
+                                                modifier = Modifier.fillMaxWidth().weight(1f),
+                                                contentAlignment = Alignment.Center
+                                            ) {
+                                                Text(
+                                                    text = "No videos in this folder.",
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                )
+                                            }
+                                        } else {
+                                            LazyColumn(
+                                                modifier = Modifier.weight(1f),
+                                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                                            ) {
+                                                items(displayedVideos) { video ->
+                                                    VideoItemRow(
+                                                        video = video,
+                                                        onClick = { showDevicePopupForVideo = video }
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        2 -> {
+                            // PLAYLISTS TAB
+                            val db = remember { AppDatabase.getDatabase(context) }
+                            val playlists by remember { db.playlistDao().getAllPlaylistsWithItemsFlow() }.collectAsState(initial = emptyList())
+                            var newPlaylistName by remember { mutableStateOf("") }
+                            var showAiDialog by remember { mutableStateOf(false) }
+
+                            Column(
+                                modifier = Modifier.fillMaxSize(),
+                                verticalArrangement = Arrangement.spacedBy(16.dp)
+                            ) {
+                                Text(
+                                    text = "Playlists & Queues",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                ) {
+                                    OutlinedTextField(
+                                        value = newPlaylistName,
+                                        onValueChange = { newPlaylistName = it },
+                                        placeholder = { Text("New Playlist Name") },
+                                        modifier = Modifier.weight(1f),
+                                        singleLine = true,
+                                        shape = RoundedCornerShape(16.dp)
+                                    )
+                                    Button(
+                                        onClick = {
+                                            if (newPlaylistName.isNotBlank()) {
+                                                val name = newPlaylistName.trim()
+                                                newPlaylistName = ""
+                                                coroutineScope.launch(Dispatchers.IO) {
+                                                    db.playlistDao().insertPlaylistSync(Playlist(name = name))
                                                 }
                                             }
                                         },
-                                        enabled = !aiLoading
+                                        shape = RoundedCornerShape(16.dp),
+                                        modifier = Modifier.height(56.dp)
                                     ) {
-                                        Text("Save Playlist")
+                                        Text("Create")
                                     }
                                 }
-                            },
-                            dismissButton = {
-                                if (generatedResult != null) {
-                                    TextButton(
-                                        onClick = {
-                                            generatedResult = null
-                                            aiError = null
-                                        },
-                                        enabled = !aiLoading
-                                    ) {
-                                        Text("Change Prompt")
-                                    }
-                                } else {
-                                    TextButton(
-                                        onClick = { if (!aiLoading) showAiDialog = false },
-                                        enabled = !aiLoading
-                                    ) {
-                                        Text("Cancel")
-                                    }
-                                }
-                            }
-                        )
-                    }
-                    
-                    if (playlists.isEmpty()) {
-                        Box(modifier = Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
-                            Text("No playlists yet.", color = Color(0xFF49454F))
-                        }
-                    } else {
-                        var playlistToDelete by remember { mutableStateOf<com.example.db.Playlist?>(null) }
 
-                        LazyColumn(
-                            modifier = Modifier.weight(1f),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            items(playlists) { playlistInfo ->
-                                Card(
-                                    modifier = Modifier.fillMaxWidth(),
+                                FilledTonalButton(
+                                    onClick = { showAiDialog = true },
+                                    modifier = Modifier.fillMaxWidth().height(48.dp),
                                     shape = RoundedCornerShape(16.dp),
-                                    colors = CardDefaults.cardColors(containerColor = Color.White),
-                                    border = BorderStroke(1.dp, Color(0xFFCAC4D0))
+                                    colors = ButtonDefaults.filledTonalButtonColors(
+                                        containerColor = MaterialTheme.colorScheme.primaryContainer,
+                                        contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                                    )
                                 ) {
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth().padding(16.dp),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.SpaceBetween
-                                    ) {
-                                        Column(modifier = Modifier.weight(1f)) {
-                                            Text(playlistInfo.playlist.name, fontWeight = FontWeight.Bold, fontSize = 16.sp, color = Color(0xFF1C1B1F))
-                                            Text("${playlistInfo.items.size} videos", fontSize = 12.sp, color = Color(0xFF49454F))
-                                        }
-                                        IconButton(onClick = {
-                                            playlistToDelete = playlistInfo.playlist
-                                        }) {
-                                            Icon(Icons.Default.Delete, contentDescription = "Delete", tint = Color.Red)
-                                        }
-                                    }
+                                    Icon(
+                                        imageVector = Icons.Default.AutoAwesome,
+                                        contentDescription = "AI Generation",
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text("Smart AI Playlist Generator", fontWeight = FontWeight.Bold)
                                 }
-                            }
-                        }
 
-                        if (playlistToDelete != null) {
-                            AlertDialog(
-                                onDismissRequest = { playlistToDelete = null },
-                                title = { Text("Delete Playlist") },
-                                text = { Text("Are you sure you want to delete '${playlistToDelete?.name}'?") },
-                                confirmButton = {
-                                    TextButton(onClick = {
-                                        playlistToDelete?.let { p ->
-                                            CoroutineScope(Dispatchers.IO).launch {
-                                                db.playlistDao().deletePlaylistSync(p.id)
+                                if (showAiDialog) {
+                                    var aiPrompt by remember { mutableStateOf("") }
+                                    var aiExpectedCount by remember { mutableStateOf("") }
+                                    var aiLoading by remember { mutableStateOf(false) }
+                                    var aiError by remember { mutableStateOf<String?>(null) }
+                                    var generatedResult by remember { mutableStateOf<AiHelper.AiPlaylistResult?>(null) }
+                                    var decidedPlaylistName by remember { mutableStateOf("") }
+
+                                    AlertDialog(
+                                        onDismissRequest = { if (!aiLoading) showAiDialog = false },
+                                        shape = RoundedCornerShape(24.dp),
+                                        title = {
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                Icon(
+                                                    imageVector = Icons.Default.AutoAwesome,
+                                                    contentDescription = null,
+                                                    tint = MaterialTheme.colorScheme.primary,
+                                                    modifier = Modifier.size(24.dp)
+                                                )
+                                                Spacer(modifier = Modifier.width(10.dp))
+                                                Text(
+                                                    text = if (generatedResult == null) "AI Playlist Creator" else "AI Generated Playlist",
+                                                    fontWeight = FontWeight.Bold,
+                                                    style = MaterialTheme.typography.titleMedium
+                                                )
+                                            }
+                                        },
+                                        text = {
+                                            Column(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                verticalArrangement = Arrangement.spacedBy(10.dp)
+                                            ) {
+                                                if (generatedResult == null) {
+                                                    Text(
+                                                        text = "Describe your desired show or episodes (e.g. 'Science series episode 1 to 200 in ascending order'). AI will arrange all videos chronologically and suggest a playlist name.",
+                                                        style = MaterialTheme.typography.bodySmall,
+                                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                    )
+                                                    OutlinedTextField(
+                                                        value = aiPrompt,
+                                                        onValueChange = { aiPrompt = it },
+                                                        label = { Text("What should AI create?") },
+                                                        placeholder = { Text("E.g. all 200 episodes in order") },
+                                                        modifier = Modifier.fillMaxWidth(),
+                                                        enabled = !aiLoading,
+                                                        shape = RoundedCornerShape(12.dp)
+                                                    )
+                                                    OutlinedTextField(
+                                                        value = aiExpectedCount,
+                                                        onValueChange = { if (it.all { char -> char.isDigit() }) aiExpectedCount = it },
+                                                        label = { Text("Episode / Video Count (Optional)") },
+                                                        placeholder = { Text("E.g. 200") },
+                                                        singleLine = true,
+                                                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                                        modifier = Modifier.fillMaxWidth(),
+                                                        enabled = !aiLoading,
+                                                        shape = RoundedCornerShape(12.dp)
+                                                    )
+                                                    Text(
+                                                        text = "💡 Tip: Giving the episode count verifies that zero videos are missed.",
+                                                        style = MaterialTheme.typography.labelSmall,
+                                                        color = MaterialTheme.colorScheme.primary
+                                                    )
+                                                } else {
+                                                    Text(
+                                                        text = "AI Suggested Title:",
+                                                        style = MaterialTheme.typography.bodySmall,
+                                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                    )
+                                                    OutlinedTextField(
+                                                        value = decidedPlaylistName,
+                                                        onValueChange = { decidedPlaylistName = it },
+                                                        label = { Text("Playlist Name") },
+                                                        singleLine = true,
+                                                        modifier = Modifier.fillMaxWidth(),
+                                                        shape = RoundedCornerShape(12.dp)
+                                                    )
+                                                    Card(
+                                                        modifier = Modifier.fillMaxWidth(),
+                                                        colors = CardDefaults.cardColors(
+                                                            containerColor = if (generatedResult!!.isVerified) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant
+                                                        ),
+                                                        shape = RoundedCornerShape(12.dp)
+                                                    ) {
+                                                        Column(modifier = Modifier.padding(12.dp)) {
+                                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                                Icon(
+                                                                    imageVector = Icons.Default.CheckCircle,
+                                                                    contentDescription = "Verified",
+                                                                    tint = if (generatedResult!!.isVerified) GreenSuccess else MaterialTheme.colorScheme.primary,
+                                                                    modifier = Modifier.size(18.dp)
+                                                                )
+                                                                Spacer(modifier = Modifier.width(6.dp))
+                                                                Text(
+                                                                    text = generatedResult!!.verificationBadge,
+                                                                    fontWeight = FontWeight.Bold,
+                                                                    style = MaterialTheme.typography.bodyMedium
+                                                                )
+                                                            }
+                                                            if (generatedResult!!.verificationDetails.isNotBlank()) {
+                                                                Spacer(modifier = Modifier.height(4.dp))
+                                                                Text(
+                                                                    text = generatedResult!!.verificationDetails,
+                                                                    style = MaterialTheme.typography.bodySmall,
+                                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                                )
+                                                            }
+                                                        }
+                                                    }
+                                                    Text(
+                                                        text = "Ordered Episodes (${generatedResult!!.ids.size} videos):",
+                                                        fontWeight = FontWeight.SemiBold,
+                                                        style = MaterialTheme.typography.bodySmall
+                                                    )
+                                                    Card(
+                                                        modifier = Modifier.fillMaxWidth(),
+                                                        colors = CardDefaults.cardColors(
+                                                            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                                                        ),
+                                                        shape = RoundedCornerShape(10.dp)
+                                                    ) {
+                                                        val matched = generatedResult!!.ids.mapIndexed { idx, id ->
+                                                            val v = videoList.find { it.id == id }
+                                                            val title = v?.title ?: "Video $id"
+                                                            "#${idx + 1}  $title"
+                                                        }
+                                                        LazyColumn(
+                                                            modifier = Modifier
+                                                                .fillMaxWidth()
+                                                                .heightIn(max = 140.dp)
+                                                                .padding(8.dp),
+                                                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                                                        ) {
+                                                            items(matched) { itemText ->
+                                                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                                                    Icon(
+                                                                        imageVector = Icons.Default.PlayArrow,
+                                                                        contentDescription = null,
+                                                                        modifier = Modifier.size(14.dp),
+                                                                        tint = MaterialTheme.colorScheme.primary
+                                                                    )
+                                                                    Spacer(modifier = Modifier.width(6.dp))
+                                                                    Text(
+                                                                        text = itemText,
+                                                                        style = MaterialTheme.typography.bodySmall,
+                                                                        maxLines = 1,
+                                                                        overflow = TextOverflow.Ellipsis
+                                                                    )
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                }
+
+                                                if (aiError != null) {
+                                                    Text(
+                                                        text = aiError!!,
+                                                        color = MaterialTheme.colorScheme.error,
+                                                        style = MaterialTheme.typography.bodySmall
+                                                    )
+                                                }
+                                                if (aiLoading) {
+                                                    CircularProgressIndicator(
+                                                        modifier = Modifier
+                                                            .align(Alignment.CenterHorizontally)
+                                                            .size(32.dp),
+                                                        strokeWidth = 3.dp
+                                                    )
+                                                }
+                                            }
+                                        },
+                                        confirmButton = {
+                                            if (generatedResult == null) {
+                                                Button(
+                                                    onClick = {
+                                                        if (aiPrompt.isNotBlank()) {
+                                                            aiLoading = true
+                                                            aiError = null
+                                                            coroutineScope.launch {
+                                                                try {
+                                                                    val userCount = aiExpectedCount.toIntOrNull()
+                                                                    val aiResult = AiHelper.generatePlaylist(context, aiPrompt, userCount)
+                                                                    if (aiResult.ids.isEmpty()) {
+                                                                        aiError = "No matching videos found in your library."
+                                                                        aiLoading = false
+                                                                    } else {
+                                                                        generatedResult = aiResult
+                                                                        decidedPlaylistName = aiResult.name
+                                                                        aiLoading = false
+                                                                    }
+                                                                } catch (e: Exception) {
+                                                                    aiError = e.message ?: "An error occurred."
+                                                                    aiLoading = false
+                                                                }
+                                                            }
+                                                        }
+                                                    },
+                                                    enabled = !aiLoading && aiPrompt.isNotBlank()
+                                                ) {
+                                                    Text("Generate")
+                                                }
+                                            } else {
+                                                Button(
+                                                    onClick = {
+                                                        coroutineScope.launch(Dispatchers.IO) {
+                                                            try {
+                                                                val finalTitle = decidedPlaylistName.trim().ifBlank { "AI Playlist" }
+                                                                val newId = db.playlistDao().insertPlaylistSync(Playlist(name = finalTitle)).toInt()
+
+                                                                generatedResult!!.ids.forEachIndexed { index, vId ->
+                                                                    db.playlistDao().insertPlaylistItemSync(
+                                                                        PlaylistItem(
+                                                                            playlistId = newId,
+                                                                            videoId = vId,
+                                                                            displayOrder = index
+                                                                        )
+                                                                    )
+                                                                }
+                                                                showAiDialog = false
+                                                            } catch (e: Exception) {
+                                                                aiError = e.message ?: "Failed to save playlist."
+                                                            }
+                                                        }
+                                                    },
+                                                    enabled = !aiLoading
+                                                ) {
+                                                    Text("Save Playlist")
+                                                }
+                                            }
+                                        },
+                                        dismissButton = {
+                                            if (generatedResult != null) {
+                                                TextButton(
+                                                    onClick = {
+                                                        generatedResult = null
+                                                        aiError = null
+                                                    },
+                                                    enabled = !aiLoading
+                                                ) {
+                                                    Text("Change Prompt")
+                                                }
+                                            } else {
+                                                TextButton(
+                                                    onClick = { if (!aiLoading) showAiDialog = false },
+                                                    enabled = !aiLoading
+                                                ) {
+                                                    Text("Cancel")
+                                                }
                                             }
                                         }
-                                        playlistToDelete = null
-                                    }) {
-                                        Text("Delete", color = Color.Red)
+                                    )
+                                }
+
+                                if (playlists.isEmpty()) {
+                                    Box(
+                                        modifier = Modifier.fillMaxWidth().weight(1f),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                            Icon(
+                                                imageVector = Icons.Default.PlaylistPlay,
+                                                contentDescription = null,
+                                                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                                                modifier = Modifier.size(52.dp)
+                                            )
+                                            Spacer(modifier = Modifier.height(10.dp))
+                                            Text(
+                                                text = "No playlists created yet",
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
                                     }
-                                },
-                                dismissButton = {
-                                    TextButton(onClick = { playlistToDelete = null }) {
-                                        Text("Cancel")
+                                } else {
+                                    var playlistToDelete by remember { mutableStateOf<Playlist?>(null) }
+
+                                    LazyColumn(
+                                        modifier = Modifier.weight(1f),
+                                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        items(playlists) { playlistInfo ->
+                                            Card(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                shape = RoundedCornerShape(16.dp),
+                                                colors = CardDefaults.cardColors(
+                                                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
+                                                ),
+                                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                                            ) {
+                                                Row(
+                                                    modifier = Modifier
+                                                        .fillMaxWidth()
+                                                        .padding(16.dp),
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.SpaceBetween
+                                                ) {
+                                                    Column(modifier = Modifier.weight(1f)) {
+                                                        Text(
+                                                            text = playlistInfo.playlist.name,
+                                                            fontWeight = FontWeight.Bold,
+                                                            style = MaterialTheme.typography.bodyLarge,
+                                                            color = MaterialTheme.colorScheme.onSurface
+                                                        )
+                                                        Text(
+                                                            text = "${playlistInfo.items.size} videos",
+                                                            style = MaterialTheme.typography.bodySmall,
+                                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                        )
+                                                    }
+                                                    IconButton(
+                                                        onClick = { playlistToDelete = playlistInfo.playlist },
+                                                        modifier = Modifier.minimumInteractiveComponentSize()
+                                                    ) {
+                                                        Icon(
+                                                            imageVector = Icons.Default.Delete,
+                                                            contentDescription = "Delete Playlist",
+                                                            tint = MaterialTheme.colorScheme.error
+                                                        )
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    if (playlistToDelete != null) {
+                                        AlertDialog(
+                                            onDismissRequest = { playlistToDelete = null },
+                                            title = { Text("Delete Playlist") },
+                                            text = { Text("Are you sure you want to delete '${playlistToDelete?.name}'?") },
+                                            confirmButton = {
+                                                TextButton(onClick = {
+                                                    playlistToDelete?.let { p ->
+                                                        coroutineScope.launch(Dispatchers.IO) {
+                                                            db.playlistDao().deletePlaylistSync(p.id)
+                                                        }
+                                                    }
+                                                    playlistToDelete = null
+                                                }) {
+                                                    Text("Delete", color = MaterialTheme.colorScheme.error)
+                                                }
+                                            },
+                                            dismissButton = {
+                                                TextButton(onClick = { playlistToDelete = null }) {
+                                                    Text("Cancel")
+                                                }
+                                            }
+                                        )
                                     }
                                 }
-                            )
+                            }
                         }
                     }
-                }
-            }
-        }
-        }
-
-
-
-        // Bottom Navigation Bar simulation (Material 3 premium feel)
-        Card(
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .fillMaxWidth()
-                .height(80.dp),
-            shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
-            colors = CardDefaults.cardColors(containerColor = Color(0xFFF3EDF7)),
-            elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
-        ) {
-            Row(
-                modifier = Modifier.fillMaxSize(),
-                horizontalArrangement = Arrangement.SpaceAround,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                // Server (Active)
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    modifier = Modifier
-                        .weight(1f)
-                        .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {
-                            currentPage = 0
-                        }
-                        .padding(vertical = 8.dp)
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .background(
-                                color = if (currentPage == 0) Color(0xFFEADDFF) else Color.Transparent,
-                                shape = RoundedCornerShape(16.dp)
-                            )
-                            .padding(horizontal = 20.dp, vertical = 4.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Refresh,
-                            contentDescription = "Server tab",
-                            tint = if (currentPage == 0) Color(0xFF21005D) else Color(0xFF49454F),
-                            modifier = Modifier.size(22.dp)
-                        )
-                    }
-                    Spacer(modifier = Modifier.height(2.dp))
-                    Text(
-                        text = "Server",
-                        fontSize = 11.sp,
-                        fontWeight = if (currentPage == 0) FontWeight.Bold else FontWeight.Medium,
-                        color = if (currentPage == 0) Color(0xFF21005D) else Color(0xFF49454F)
-                    )
-                }
-
-                // Library
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    modifier = Modifier
-                        .weight(1f)
-                        .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {
-                            currentPage = 1
-                        }
-                        .padding(vertical = 8.dp)
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .background(
-                                color = if (currentPage == 1) Color(0xFFEADDFF) else Color.Transparent,
-                                shape = RoundedCornerShape(16.dp)
-                            )
-                            .padding(horizontal = 20.dp, vertical = 4.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.PlayArrow,
-                            contentDescription = "Library tab",
-                            tint = if (currentPage == 1) Color(0xFF21005D) else Color(0xFF49454F),
-                            modifier = Modifier.size(22.dp)
-                        )
-                    }
-                    Spacer(modifier = Modifier.height(2.dp))
-                    Text(
-                        text = "Library",
-                        fontSize = 11.sp,
-                        fontWeight = if (currentPage == 1) FontWeight.Bold else FontWeight.Medium,
-                        color = if (currentPage == 1) Color(0xFF21005D) else Color(0xFF49454F)
-                    )
-                }
-
-                // Analytics
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    modifier = Modifier
-                        .weight(1f)
-                        .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {
-                            currentPage = 2
-                        }
-                        .padding(vertical = 8.dp)
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .background(
-                                color = if (currentPage == 2) Color(0xFFEADDFF) else Color.Transparent,
-                                shape = RoundedCornerShape(16.dp)
-                            )
-                            .padding(horizontal = 20.dp, vertical = 4.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Menu,
-                            contentDescription = "Playlists tab",
-                            tint = if (currentPage == 2) Color(0xFF21005D) else Color(0xFF49454F),
-                            modifier = Modifier.size(22.dp)
-                        )
-                    }
-                    Spacer(modifier = Modifier.height(2.dp))
-                    Text(
-                        text = "Playlists",
-                        fontSize = 11.sp,
-                        fontWeight = if (currentPage == 2) FontWeight.Bold else FontWeight.Medium,
-                        color = if (currentPage == 2) Color(0xFF21005D) else Color(0xFF49454F)
-                    )
                 }
             }
         }
@@ -1240,41 +1170,66 @@ fun ServerDashboardScreen(
 
     if (showDevicePopupForVideo != null) {
         val video = showDevicePopupForVideo!!
-        val db = remember { com.example.db.AppDatabase.getDatabase(context) }
+        val db = remember { AppDatabase.getDatabase(context) }
         val playlists by remember { db.playlistDao().getAllPlaylistsFlow() }.collectAsState(initial = emptyList())
-        
+
         AlertDialog(
             onDismissRequest = { showDevicePopupForVideo = null },
-            title = { Text(text = "Play or Queue", fontWeight = FontWeight.Bold) },
+            shape = RoundedCornerShape(24.dp),
+            title = {
+                Text(
+                    text = "Play or Queue",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold
+                )
+            },
             text = {
                 Column(modifier = Modifier.fillMaxWidth()) {
-                    Text("Play on TV", fontWeight = FontWeight.Bold, modifier = Modifier.padding(bottom = 8.dp))
+                    Text(
+                        text = "Play on TV",
+                        fontWeight = FontWeight.Bold,
+                        style = MaterialTheme.typography.titleSmall,
+                        modifier = Modifier.padding(bottom = 8.dp)
+                    )
                     if (connectedClients.isEmpty()) {
-                        Text("No connected devices found.", color = Color(0xFF49454F))
+                        Text(
+                            text = "No connected TV clients found.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     } else {
                         LazyColumn(modifier = Modifier.weight(1f, fill = false)) {
                             items(connectedClients) { client ->
                                 Card(
-                                    modifier = Modifier.fillMaxWidth().clickable {
-                                        CoroutineScope(Dispatchers.IO).launch {
-                                            try {
-                                                val url = "http://${client.ip}:9000/command?action=play_video&id=${video.id}"
-                                                val request = Request.Builder().url(url).build()
-                                                OkHttpClient().newCall(request).execute().close()
-                                            } catch (e: Exception) {
-                                                Log.e("Popup", "Command failed: play_video", e)
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            coroutineScope.launch(Dispatchers.IO) {
+                                                try {
+                                                    val url = "http://${client.ip}:9000/command?action=play_video&id=${video.id}"
+                                                    val request = Request.Builder().url(url).build()
+                                                    OkHttpClient().newCall(request).execute().close()
+                                                } catch (e: Exception) {
+                                                    Log.e("Popup", "Command failed: play_video", e)
+                                                }
                                             }
+                                            showDevicePopupForVideo = null
                                         }
-                                        showDevicePopupForVideo = null
-                                    }.padding(vertical = 4.dp),
-                                    colors = CardDefaults.cardColors(containerColor = Color.White),
-                                    border = BorderStroke(1.dp, Color(0xFFCAC4D0))
+                                        .padding(vertical = 4.dp),
+                                    colors = CardDefaults.cardColors(
+                                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                                    ),
+                                    shape = RoundedCornerShape(12.dp)
                                 ) {
                                     Row(
-                                        modifier = Modifier.padding(12.dp).fillMaxWidth(),
+                                        modifier = Modifier.padding(14.dp).fillMaxWidth(),
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        Icon(Icons.Default.Tv, contentDescription = "TV", tint = Color(0xFF6750A4))
+                                        Icon(
+                                            imageVector = Icons.Default.Tv,
+                                            contentDescription = "TV",
+                                            tint = MaterialTheme.colorScheme.primary
+                                        )
                                         Spacer(modifier = Modifier.width(12.dp))
                                         Text(text = client.name, fontWeight = FontWeight.Medium)
                                     }
@@ -1284,34 +1239,52 @@ fun ServerDashboardScreen(
                     }
 
                     Spacer(modifier = Modifier.height(16.dp))
-                    Text("Add to Playlist", fontWeight = FontWeight.Bold, modifier = Modifier.padding(bottom = 8.dp))
+                    Text(
+                        text = "Add to Playlist",
+                        fontWeight = FontWeight.Bold,
+                        style = MaterialTheme.typography.titleSmall,
+                        modifier = Modifier.padding(bottom = 8.dp)
+                    )
                     if (playlists.isEmpty()) {
-                        Text("No playlists available.", color = Color(0xFF49454F))
+                        Text(
+                            text = "No playlists available.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     } else {
                         LazyColumn(modifier = Modifier.weight(1f, fill = false)) {
                             items(playlists) { playlist ->
                                 Card(
-                                    modifier = Modifier.fillMaxWidth().clickable {
-                                        CoroutineScope(Dispatchers.IO).launch {
-                                            val maxOrder = db.playlistDao().getMaxDisplayOrderSync(playlist.id)
-                                            db.playlistDao().insertPlaylistItemSync(
-                                                com.example.db.PlaylistItem(
-                                                    playlistId = playlist.id,
-                                                    videoId = video.id,
-                                                    displayOrder = maxOrder + 1
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            coroutineScope.launch(Dispatchers.IO) {
+                                                val maxOrder = db.playlistDao().getMaxDisplayOrderSync(playlist.id)
+                                                db.playlistDao().insertPlaylistItemSync(
+                                                    PlaylistItem(
+                                                        playlistId = playlist.id,
+                                                        videoId = video.id,
+                                                        displayOrder = maxOrder + 1
+                                                    )
                                                 )
-                                            )
+                                            }
+                                            showDevicePopupForVideo = null
                                         }
-                                        showDevicePopupForVideo = null
-                                    }.padding(vertical = 4.dp),
-                                    colors = CardDefaults.cardColors(containerColor = Color.White),
-                                    border = BorderStroke(1.dp, Color(0xFFCAC4D0))
+                                        .padding(vertical = 4.dp),
+                                    colors = CardDefaults.cardColors(
+                                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                                    ),
+                                    shape = RoundedCornerShape(12.dp)
                                 ) {
                                     Row(
-                                        modifier = Modifier.padding(12.dp).fillMaxWidth(),
+                                        modifier = Modifier.padding(14.dp).fillMaxWidth(),
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        Icon(Icons.Default.Menu, contentDescription = "Playlist", tint = Color(0xFF6750A4))
+                                        Icon(
+                                            imageVector = Icons.Default.PlaylistPlay,
+                                            contentDescription = "Playlist",
+                                            tint = MaterialTheme.colorScheme.primary
+                                        )
                                         Spacer(modifier = Modifier.width(12.dp))
                                         Text(text = playlist.name, fontWeight = FontWeight.Medium)
                                     }
@@ -1333,11 +1306,91 @@ fun ServerDashboardScreen(
         ModalBottomSheet(
             onDismissRequest = { selectedTvIp = null },
             sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-            containerColor = Color(0xFFF7F2FA),
             modifier = Modifier.fillMaxSize()
         ) {
             Box(modifier = Modifier.fillMaxSize()) {
                 RemoteScreen(tvIp = selectedTvIp!!, onBack = { selectedTvIp = null })
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalGlideComposeApi::class)
+@Composable
+private fun VideoItemRow(
+    video: LocalVideoServer.SharedVideo,
+    onClick: () -> Unit
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
+        ),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(52.dp)
+                    .background(
+                        color = if (video.isLocal) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.secondaryContainer,
+                        shape = RoundedCornerShape(10.dp)
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                if (video.thumbnailUrl.isNotEmpty()) {
+                    GlideImage(
+                        model = video.thumbnailUrl,
+                        contentDescription = "Thumbnail",
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                } else {
+                    Icon(
+                        imageVector = Icons.Default.PlayArrow,
+                        contentDescription = "Play icon",
+                        tint = if (video.isLocal) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSecondaryContainer
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.width(14.dp))
+
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = video.title,
+                    fontWeight = FontWeight.SemiBold,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = if (video.isLocal) {
+                        "Local file • ${formatBytes(video.size)}"
+                    } else {
+                        "Cloud video • ${video.duration}"
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                if (video.totalDuration > 0L && video.watchedPosition > 0L) {
+                    Spacer(modifier = Modifier.height(6.dp))
+                    LinearProgressIndicator(
+                        progress = { (video.watchedPosition.toFloat() / video.totalDuration.toFloat()).coerceIn(0f, 1f) },
+                        modifier = Modifier.fillMaxWidth().height(4.dp),
+                        color = MaterialTheme.colorScheme.primary,
+                        trackColor = MaterialTheme.colorScheme.primaryContainer
+                    )
+                }
             }
         }
     }
@@ -1369,7 +1422,7 @@ private fun getFileName(context: Context, uri: Uri): String? {
 }
 
 private fun getFileSize(context: Context, uri: Uri): Long {
-    var size: Long = 0L
+    var size = 0L
     if (uri.scheme == "content") {
         val cursor = context.contentResolver.query(uri, null, null, null, null)
         try {
@@ -1428,7 +1481,6 @@ private fun scanLocalMedia(context: Context, localVideoServer: LocalVideoServer)
 
                 val contentUri = ContentUris.withAppendedId(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, id)
                 val strId = "local_media_$id"
-                // Check if already exist to prevent dupes if rescanned
                 if (localVideoServer.getVideosList().none { it.id == strId }) {
                     localVideoServer.addLocalVideo(strId, name, contentUri, size, folder)
                 }

@@ -1,22 +1,37 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    android:layout_width="match_parent"
+    android:layout_width="560dp"
     android:layout_height="wrap_content"
     android:orientation="vertical"
-    android:gravity="center"
-    android:padding="24dp">
+    android:background="@drawable/dialog_rounded_bg"
+    android:padding="36dp"
+    android:gravity="center">
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Audio Shift Calibration"
+        android:textSize="26sp"
+        android:textColor="#FFFFFF"
+        android:textStyle="bold"
+        android:layout_marginBottom="24dp" />
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="horizontal"
-        android:gravity="center">
+        android:gravity="center_vertical">
 
         <Button
             android:id="@+id/btnMinus10"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="-0.1s" />
+            android:layout_width="88dp"
+            android:layout_height="48dp"
+            android:text="-0.1s"
+            android:background="@drawable/dialog_btn_bg"
+            android:textColor="@color/dialog_btn_text_color"
+            android:textSize="18sp"
+            android:focusable="true"
+            android:focusableInTouchMode="true" />
 
         <SeekBar
             android:id="@+id/shiftSeekBar"
@@ -26,30 +41,45 @@
             android:layout_marginStart="16dp"
             android:layout_marginEnd="16dp"
             android:max="1200"
-            android:progress="600" />
-            
+            android:progress="600"
+            android:focusable="true"
+            android:focusableInTouchMode="true" />
+
         <TextView
             android:id="@+id/shiftValueText"
-            android:layout_width="60dp"
+            android:layout_width="72dp"
             android:layout_height="wrap_content"
             android:gravity="center"
             android:text="0.0s"
-            android:textSize="18sp"
-            android:textColor="#FFFFFF" />
+            android:textSize="22sp"
+            android:textStyle="bold"
+            android:textColor="@color/focus_glow" />
 
         <Button
             android:id="@+id/btnPlus10"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
+            android:layout_width="88dp"
+            android:layout_height="48dp"
             android:layout_marginStart="16dp"
-            android:text="+0.1s" />
+            android:text="+0.1s"
+            android:background="@drawable/dialog_btn_bg"
+            android:textColor="@color/dialog_btn_text_color"
+            android:textSize="18sp"
+            android:focusable="true"
+            android:focusableInTouchMode="true" />
     </LinearLayout>
 
     <Button
         android:id="@+id/btnToggleSync"
         android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="24dp"
-        android:text="Stop Syncing" />
+        android:layout_height="48dp"
+        android:layout_marginTop="28dp"
+        android:text="Stop Syncing"
+        android:background="@drawable/dialog_btn_bg"
+        android:textColor="@color/dialog_btn_text_color"
+        android:textSize="18sp"
+        android:paddingStart="24dp"
+        android:paddingEnd="24dp"
+        android:focusable="true"
+        android:focusableInTouchMode="true" />
 
 </LinearLayout>
