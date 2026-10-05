@@ -51,6 +51,13 @@ jobs:
         STORE_PASSWORD: ${{ secrets.STORE_PASSWORD || 'Aryan@2026' }}
         KEY_PASSWORD: ${{ secrets.KEY_PASSWORD || 'Aryan@2026' }}
 
+    - name: Verify Release APK Sizes
+      run: |
+        echo "=== Generated Release APK Sizes ==="
+        ls -lh mobile/build/outputs/apk/release/*.apk
+        ls -lh tv/build/outputs/apk/release/*.apk || true
+        ls -lh remoteaudio/build/outputs/apk/release/*.apk || true
+
     - name: Upload Mobile Release APK
       uses: actions/upload-artifact@v4
       with:

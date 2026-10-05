@@ -95,8 +95,19 @@ jobs:
         find . -name "build.gradle.kts" -exec sed -i -E "s/versionCode = [0-9]+/versionCode = $VERSION_CODE/g" {} +
         find . -name "build.gradle.kts" -exec sed -i -E "s/versionName = \"[^\"]+\"/versionName = \"$VERSION_NAME\"/g" {} +
 
-    - name: Build Mobile, TV and Remote Audio debug APKs
-      run: ./gradlew assembleDebug --parallel --build-cache --configuration-cache --configure-on-demand --no-daemon -x test -x lint -x check
+    - name: Build Mobile, TV and Remote Audio APKs
+      run: ./gradlew assembleDebug assembleRelease --parallel --build-cache --configuration-cache --configure-on-demand --no-daemon -x test -x lint -x check
+
+    - name: Verify APK Sizes
+      run: |
+        echo "=== Generated APK Sizes ==="
+        ls -lh mobile/build/outputs/apk/*/*.apk tv/build/outputs/apk/*/*.apk remoteaudio/build/outputs/apk/*/*.apk || true
+
+    - name: Upload Mobile Release APK (Optimized < 10MB)
+      uses: actions/upload-artifact@v4
+      with:
+        name: mobile-stream-server-release
+        path: mobile/build/outputs/apk/release/mobile-release.apk
 
     - name: Upload Mobile Debug APK
       uses: actions/upload-artifact@v4

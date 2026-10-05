@@ -13,6 +13,10 @@ android {
     targetSdk = 36
     versionCode = 1
     versionName = "1.0"
+    resourceConfigurations += setOf("en")
+    ndk {
+      abiFilters += listOf("arm64-v8a")
+    }
   }
 
   signingConfigs {
@@ -27,11 +31,29 @@ android {
   buildTypes {
     release {
       isCrunchPngs = false
-      isMinifyEnabled = false
+      isMinifyEnabled = true
+      isShrinkResources = true
+      proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
       signingConfig = signingConfigs.getByName("debugConfig")
     }
     debug {
+      isMinifyEnabled = true
+      isShrinkResources = true
+      proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
       signingConfig = signingConfigs.getByName("debugConfig")
+    }
+  }
+  packaging {
+    resources {
+      excludes += listOf(
+        "/META-INF/{AL2.0,LGPL2.1}",
+        "/META-INF/INDEX.LIST",
+        "/META-INF/DEPENDENCIES",
+        "META-INF/*.version",
+        "META-INF/LICENSE*",
+        "META-INF/NOTICE*",
+        "DebugProbesKt.bin"
+      )
     }
   }
   compileOptions {
@@ -60,6 +82,5 @@ dependencies {
   implementation(libs.kotlinx.coroutines.android)
   implementation(libs.kotlinx.coroutines.core)
   implementation(libs.okhttp)
-  implementation(libs.nextlib.media3ext)
   implementation("androidx.media3:media3-exoplayer:1.2.1")
 }
