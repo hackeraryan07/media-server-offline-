@@ -42,4 +42,42 @@ class ExampleRobolectricTest {
     val genericName = AiHelper.cleanAndValidatePlaylistName("", "comedy shows", emptyList())
     assertEquals("Comedy Shows Collection", genericName)
   }
+
+  @Test
+  fun `extractCountFromPrompt accurately extracts user specified counts`() {
+    assertEquals(200, AiHelper.extractCountFromPrompt("all 200 taarak mehta episodes in ascending order"))
+    assertEquals(215, AiHelper.extractCountFromPrompt("arrange 215 episodes chronologically"))
+    assertEquals(150, AiHelper.extractCountFromPrompt("total of 150 videos in order"))
+    assertEquals(250, AiHelper.extractCountFromPrompt("there are 250 eps of naruto"))
+    assertEquals(null, AiHelper.extractCountFromPrompt("arrange comedy episodes"))
+  }
+
+  @Test
+  fun `extractEpisodeNumber and naturalOrderComparator sort 200+ episodes accurately`() {
+    assertEquals(1.0, AiHelper.extractEpisodeNumber("Show - Episode 1.mp4")!!, 0.001)
+    assertEquals(10.0, AiHelper.extractEpisodeNumber("Show - Ep 10 [1080p].mkv")!!, 0.001)
+    assertEquals(105.0, AiHelper.extractEpisodeNumber("Show S01E105.mp4")!!, 0.001)
+    assertEquals(200.0, AiHelper.extractEpisodeNumber("Show - 200.mkv")!!, 0.001)
+
+    // Test that natural ordering puts Ep 2 before Ep 10 and Ep 100 before Ep 200
+    val rawList = listOf(
+      "Show - Ep 100.mp4",
+      "Show - Ep 2.mp4",
+      "Show - Ep 10.mp4",
+      "Show - Ep 1.mp4",
+      "Show - Ep 200.mp4",
+      "Show - Ep 20.mp4"
+    )
+
+    val sortedList = rawList.sortedWith(AiHelper.naturalOrderComparator)
+    val expected = listOf(
+      "Show - Ep 1.mp4",
+      "Show - Ep 2.mp4",
+      "Show - Ep 10.mp4",
+      "Show - Ep 20.mp4",
+      "Show - Ep 100.mp4",
+      "Show - Ep 200.mp4"
+    )
+    assertEquals(expected, sortedList)
+  }
 }

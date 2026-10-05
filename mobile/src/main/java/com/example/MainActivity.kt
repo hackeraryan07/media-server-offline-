@@ -44,6 +44,9 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Clear
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -794,6 +797,7 @@ fun ServerDashboardScreen(
                     
                     if (showAiDialog) {
                         var aiPrompt by remember { mutableStateOf("") }
+                        var aiExpectedCount by remember { mutableStateOf("") }
                         var aiLoading by remember { mutableStateOf(false) }
                         var aiError by remember { mutableStateOf<String?>(null) }
                         var generatedResult by remember { mutableStateOf<AiHelper.AiPlaylistResult?>(null) }
@@ -821,37 +825,94 @@ fun ServerDashboardScreen(
                                 Column(modifier = Modifier.fillMaxWidth()) {
                                     if (generatedResult == null) {
                                         Text(
-                                            "Describe what you want (e.g. 'all taarak mehta episodes in ascending order'). AI will select the videos and decide a creative, catchy title for your playlist.",
-                                            fontSize = 14.sp,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                        Spacer(modifier = Modifier.height(12.dp))
-                                        OutlinedTextField(
-                                            value = aiPrompt,
-                                            onValueChange = { aiPrompt = it },
-                                            placeholder = { Text("E.g. comedy episodes, action highlights...") },
-                                            modifier = Modifier.fillMaxWidth(),
-                                            enabled = !aiLoading,
-                                            shape = RoundedCornerShape(12.dp)
-                                        )
-                                    } else {
-                                        Text(
-                                            "The AI has curated your playlist and decided the title below. You can keep it or fine-tune it before saving:",
+                                            "Describe what you want (e.g. 'all 200 taarak mehta episodes in ascending order'). AI will arrange all episodes in order and suggest a creative name.",
                                             fontSize = 13.sp,
                                             color = MaterialTheme.colorScheme.onSurfaceVariant
                                         )
                                         Spacer(modifier = Modifier.height(10.dp))
                                         OutlinedTextField(
+                                            value = aiPrompt,
+                                            onValueChange = { aiPrompt = it },
+                                            label = { Text("What should AI create?") },
+                                            placeholder = { Text("E.g. all 200 episodes in ascending order") },
+                                            modifier = Modifier.fillMaxWidth(),
+                                            enabled = !aiLoading,
+                                            shape = RoundedCornerShape(12.dp)
+                                        )
+                                        Spacer(modifier = Modifier.height(8.dp))
+                                        OutlinedTextField(
+                                            value = aiExpectedCount,
+                                            onValueChange = { if (it.all { char -> char.isDigit() }) aiExpectedCount = it },
+                                            label = { Text("Episode / Video Count (Optional)") },
+                                            placeholder = { Text("E.g. 200 (or specify in prompt)") },
+                                            singleLine = true,
+                                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                            modifier = Modifier.fillMaxWidth(),
+                                            enabled = !aiLoading,
+                                            shape = RoundedCornerShape(12.dp)
+                                        )
+                                        Spacer(modifier = Modifier.height(6.dp))
+                                        Text(
+                                            "💡 Tip: Stating the episode count verifies that all videos are returned with zero missing episodes.",
+                                            fontSize = 11.sp,
+                                            color = MaterialTheme.colorScheme.primary
+                                        )
+                                    } else {
+                                        Text(
+                                            "AI suggested title for this playlist. You can keep it or edit it before saving:",
+                                            fontSize = 13.sp,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                        Spacer(modifier = Modifier.height(8.dp))
+                                        OutlinedTextField(
                                             value = decidedPlaylistName,
                                             onValueChange = { decidedPlaylistName = it },
-                                            label = { Text("Playlist Name (Decided by AI)") },
+                                            label = { Text("Playlist Name (Suggested by AI)") },
                                             singleLine = true,
                                             modifier = Modifier.fillMaxWidth(),
                                             shape = RoundedCornerShape(12.dp)
                                         )
-                                        Spacer(modifier = Modifier.height(12.dp))
+                                        Spacer(modifier = Modifier.height(10.dp))
+                                        Card(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            colors = CardDefaults.cardColors(
+                                                containerColor = if (generatedResult!!.isVerified) Color(0xFFE8F5E9) else MaterialTheme.colorScheme.surfaceVariant
+                                            ),
+                                            shape = RoundedCornerShape(10.dp),
+                                            border = androidx.compose.foundation.BorderStroke(
+                                                1.dp,
+                                                if (generatedResult!!.isVerified) Color(0xFFA5D6A7) else Color.Transparent
+                                            )
+                                        ) {
+                                            Column(modifier = Modifier.padding(10.dp)) {
+                                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                                    Icon(
+                                                        Icons.Default.CheckCircle,
+                                                        contentDescription = "Verified",
+                                                        tint = if (generatedResult!!.isVerified) Color(0xFF2E7D32) else MaterialTheme.colorScheme.primary,
+                                                        modifier = Modifier.size(18.dp)
+                                                    )
+                                                    Spacer(modifier = Modifier.width(6.dp))
+                                                    Text(
+                                                        text = generatedResult!!.verificationBadge,
+                                                        fontWeight = FontWeight.Bold,
+                                                        fontSize = 13.sp,
+                                                        color = if (generatedResult!!.isVerified) Color(0xFF1B5E20) else MaterialTheme.colorScheme.onSurface
+                                                    )
+                                                }
+                                                if (generatedResult!!.verificationDetails.isNotBlank()) {
+                                                    Spacer(modifier = Modifier.height(4.dp))
+                                                    Text(
+                                                        text = generatedResult!!.verificationDetails,
+                                                        fontSize = 11.sp,
+                                                        color = if (generatedResult!!.isVerified) Color(0xFF2E7D32) else MaterialTheme.colorScheme.onSurfaceVariant
+                                                    )
+                                                }
+                                            }
+                                        }
+                                        Spacer(modifier = Modifier.height(10.dp))
                                         Text(
-                                            "Selected Videos (${generatedResult!!.ids.size} found):",
+                                            "Playlist Episodes (${generatedResult!!.ids.size} videos in order):",
                                             fontWeight = FontWeight.SemiBold,
                                             fontSize = 13.sp,
                                             color = MaterialTheme.colorScheme.onSurface
@@ -862,15 +923,20 @@ fun ServerDashboardScreen(
                                             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
                                             shape = RoundedCornerShape(8.dp)
                                         ) {
-                                            Column(modifier = Modifier.padding(10.dp)) {
-                                                val matched = generatedResult!!.ids.map { id ->
-                                                    videoList.find { it.id == id }?.title ?: "Video $id"
-                                                }
-                                                matched.take(4).forEach { title ->
-                                                    Row(
-                                                        verticalAlignment = Alignment.CenterVertically,
-                                                        modifier = Modifier.padding(vertical = 2.dp)
-                                                    ) {
+                                            val matched = generatedResult!!.ids.mapIndexed { idx, id ->
+                                                val v = videoList.find { it.id == id }
+                                                val title = v?.title ?: "Video $id"
+                                                "#${idx + 1}  $title"
+                                            }
+                                            LazyColumn(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .heightIn(max = 160.dp)
+                                                    .padding(8.dp),
+                                                verticalArrangement = Arrangement.spacedBy(4.dp)
+                                            ) {
+                                                items(matched) { itemText ->
+                                                    Row(verticalAlignment = Alignment.CenterVertically) {
                                                         Icon(
                                                             Icons.Default.PlayArrow,
                                                             contentDescription = null,
@@ -879,21 +945,12 @@ fun ServerDashboardScreen(
                                                         )
                                                         Spacer(modifier = Modifier.width(6.dp))
                                                         Text(
-                                                            title,
+                                                            itemText,
                                                             fontSize = 12.sp,
                                                             maxLines = 1,
                                                             overflow = TextOverflow.Ellipsis
                                                         )
                                                     }
-                                                }
-                                                if (matched.size > 4) {
-                                                    Text(
-                                                        "+ ${matched.size - 4} more videos",
-                                                        fontSize = 11.sp,
-                                                        fontWeight = FontWeight.Medium,
-                                                        color = MaterialTheme.colorScheme.primary,
-                                                        modifier = Modifier.padding(top = 4.dp, start = 20.dp)
-                                                    )
                                                 }
                                             }
                                         }
@@ -918,7 +975,8 @@ fun ServerDashboardScreen(
                                                 aiError = null
                                                 coroutineScope.launch {
                                                     try {
-                                                        val aiResult = AiHelper.generatePlaylist(context, aiPrompt)
+                                                        val userCount = aiExpectedCount.toIntOrNull()
+                                                        val aiResult = AiHelper.generatePlaylist(context, aiPrompt, userCount)
                                                         if (aiResult.ids.isEmpty()) {
                                                             aiError = "No matching videos found in your library."
                                                             aiLoading = false
@@ -981,7 +1039,7 @@ fun ServerDashboardScreen(
                                     }
                                 } else {
                                     TextButton(
-                                        onClick = { showAiDialog = false },
+                                        onClick = { if (!aiLoading) showAiDialog = false },
                                         enabled = !aiLoading
                                     ) {
                                         Text("Cancel")
