@@ -102,6 +102,19 @@ jobs:
       run: |
         echo "=== Generated APK Sizes ==="
         ls -lh mobile/build/outputs/apk/*/*.apk tv/build/outputs/apk/*/*.apk remoteaudio/build/outputs/apk/*/*.apk || true
+        echo "=== Validating all APKs are strictly under 10MB ==="
+        for apk in mobile/build/outputs/apk/*/*.apk tv/build/outputs/apk/*/*.apk remoteaudio/build/outputs/apk/*/*.apk; do
+          if [ -f "$apk" ]; then
+            size_kb=$(du -k "$apk" | cut -f1)
+            size_mb=$(awk "BEGIN {printf \"%.2f\", $size_kb/1024}")
+            echo "$apk size: ${size_mb} MB (${size_kb} KB)"
+            if [ "$size_kb" -gt 10240 ]; then
+              echo "ERROR: $apk is ${size_mb} MB which exceeds the 10MB limit!"
+              exit 1
+            fi
+          fi
+        done
+        echo "SUCCESS: All APKs are verified to be under 10MB!"
 
     - name: Upload Mobile Release APK (Optimized < 10MB)
       uses: actions/upload-artifact@v4
@@ -115,11 +128,23 @@ jobs:
         name: mobile-stream-server-debug
         path: mobile/build/outputs/apk/debug/mobile-debug.apk
 
+    - name: Upload TV Release APK (Optimized < 10MB)
+      uses: actions/upload-artifact@v4
+      with:
+        name: tv-stream-client-release
+        path: tv/build/outputs/apk/release/tv-release.apk
+
     - name: Upload TV Debug APK
       uses: actions/upload-artifact@v4
       with:
         name: tv-stream-client-debug
         path: tv/build/outputs/apk/debug/tv-debug.apk
+
+    - name: Upload Remote Audio Release APK (Optimized < 10MB)
+      uses: actions/upload-artifact@v4
+      with:
+        name: remote-audio-client-release
+        path: remoteaudio/build/outputs/apk/release/remoteaudio-release.apk
 
     - name: Upload Remote Audio Debug APK
       uses: actions/upload-artifact@v4

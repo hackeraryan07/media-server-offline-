@@ -15,7 +15,6 @@ import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
 import androidx.media3.exoplayer.DefaultRenderersFactory
-import io.github.anilbeesetti.nextlib.media3ext.ffdecoder.NextRenderersFactory
 
 import org.json.JSONObject
 import android.widget.Toast
@@ -381,8 +380,8 @@ class PlayerActivity : AppCompatActivity() {
         videoUrlString = currentVideo?.url
         titleText.text = currentVideo?.title
         
-        val renderersFactory = NextRenderersFactory(this)
-            .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER)
+        val renderersFactory = DefaultRenderersFactory(this)
+            .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_OFF)
             .setEnableDecoderFallback(true)
 
         val trackSelector = androidx.media3.exoplayer.trackselection.DefaultTrackSelector(this).apply {
