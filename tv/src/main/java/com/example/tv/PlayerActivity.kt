@@ -283,17 +283,18 @@ class PlayerActivity : AppCompatActivity() {
                 scheduleMetadataHide()
             }
             findViewById<View>(R.id.btnAudioTrack).setOnClickListener {
-                showAudioTrackDialog()
-                scheduleMetadataHide()
-            }
-            findViewById<View>(R.id.btnAudioTrack).setOnLongClickListener {
                 isRemoteAudioEnabled = !isRemoteAudioEnabled
                 val msg = if (isRemoteAudioEnabled) "Remote Audio Enabled" else "Remote Audio Disabled"
                 Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
                 updateAudioTrackButtonState()
                 scheduleMetadataHide()
+            }
+            findViewById<View>(R.id.btnAudioTrack).setOnLongClickListener {
+                showAudioShiftDialog()
+                scheduleMetadataHide()
                 true
             }
+            updateAudioTrackButtonState()
             findViewById<View>(R.id.btnPlaylist).setOnClickListener {
                 Toast.makeText(this, "Playlist opened", Toast.LENGTH_SHORT).show()
                 scheduleMetadataHide()
@@ -322,7 +323,18 @@ class PlayerActivity : AppCompatActivity() {
                 scheduleMetadataHide()
             }
             findViewById<View>(R.id.btnSettings).setOnClickListener {
-                Toast.makeText(this, "Settings menu opened", Toast.LENGTH_SHORT).show()
+                val options = arrayOf("Select Audio Track", "Select Subtitles", "Audio Shift", "Playback Speed")
+                android.app.AlertDialog.Builder(this)
+                    .setTitle("Settings")
+                    .setItems(options) { _, which ->
+                        when (which) {
+                            0 -> showAudioTrackDialog()
+                            1 -> showSubtitleDialog()
+                            2 -> showAudioShiftDialog()
+                            3 -> findViewById<View>(R.id.btnSpeed).callOnClick()
+                        }
+                    }
+                    .show()
                 scheduleMetadataHide()
             }
     
@@ -488,7 +500,7 @@ class PlayerActivity : AppCompatActivity() {
                 state.put("audioShiftMs", currentAudioShift)
                 state.put("isContinuousSyncEnabled", isContinuousSyncEnabled)
                 state.put("isRemoteAudioEnabled", isRemoteAudioEnabled)
-                state.put("videoUrl", currentVideo?.url ?: "")
+                state.put("videoUrl", currentVideo?.url ?: videoUrlString ?: "")
                 return state
             }
             override fun handleResumeChoice(choice: String) {
@@ -523,9 +535,16 @@ class PlayerActivity : AppCompatActivity() {
                             }
                             return@post
                         }
+                        if (action == "audio_track" || action == "remote_audio") {
+                            isRemoteAudioEnabled = !isRemoteAudioEnabled
+                            val msg = if (isRemoteAudioEnabled) "Remote Audio Enabled" else "Remote Audio Disabled"
+                            Toast.makeText(this@PlayerActivity, msg, Toast.LENGTH_SHORT).show()
+                            updateAudioTrackButtonState()
+                            scheduleMetadataHide()
+                            return@post
+                        }
                         val view = when (action) {
                             "mute" -> findViewById<View>(R.id.btnMute)
-                            "audio_track" -> findViewById<View>(R.id.btnAudioTrack)
                             "subtitles" -> findViewById<View>(R.id.btnSubtitles)
                             "pip" -> findViewById<View>(R.id.btnPip)
                             "speed" -> findViewById<View>(R.id.btnSpeed)

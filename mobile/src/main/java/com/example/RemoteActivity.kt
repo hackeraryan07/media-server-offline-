@@ -141,7 +141,7 @@ fun RemoteScreen(tvIp: String, onBack: () -> Unit) {
     val options = remember(isMuted, isLocked, isRemoteAudioEnabled) {
         listOf(
             OptionItem(if (isMuted) "Unmute" else "Mute", if (isMuted) Icons.Default.VolumeOff else Icons.Default.VolumeUp, "mute", "Toggle audio volume"),
-            OptionItem(if (isRemoteAudioEnabled) "Remote Audio On" else "Remote Audio Off", Icons.Default.Audiotrack, "audio_track", "Switch audio track"),
+            OptionItem(if (isRemoteAudioEnabled) "Remote Audio On" else "Remote Audio Off", Icons.Default.Audiotrack, "audio_track", "Toggle remote audio sync"),
             OptionItem("Subtitles", Icons.Default.Subtitles, "subtitles", "Toggle subtitles"),
             OptionItem("Playback Speed", Icons.Default.Speed, "speed", "Change video speed"),
             OptionItem("Aspect Ratio", Icons.Default.AspectRatio, "resize", "Fit, Fill or Zoom screen"),
@@ -485,6 +485,9 @@ fun RemoteScreen(tvIp: String, onBack: () -> Unit) {
                                             showBottomSheet = false
                                         } else {
                                             sendCommand(option.action)
+                                            if (option.action == "audio_track") {
+                                                isRemoteAudioEnabled = !isRemoteAudioEnabled
+                                            }
                                             if (option.action != "mute" && option.action != "lock" && option.action != "audio_track") {
                                                 showBottomSheet = false
                                             }
