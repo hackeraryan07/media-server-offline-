@@ -1,10 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    android:layout_width="650dp"
+    android:layout_width="600dp"
     android:layout_height="wrap_content"
     android:orientation="vertical"
     android:background="@drawable/dialog_rounded_bg"
-    android:padding="48dp"
+    android:padding="36dp"
     android:gravity="center">
 
     <TextView
@@ -12,19 +12,19 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:text="Resume Playback?"
-        android:textSize="36sp"
-        android:textColor="#FFFFFF"
+        android:textSize="30sp"
+        android:textColor="@color/text_bright"
         android:textStyle="bold"
-        android:layout_marginBottom="24dp" />
+        android:layout_marginBottom="16dp" />
 
     <TextView
         android:id="@+id/dialog_message"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:textSize="22sp"
-        android:textColor="#CCCCCC"
+        android:textSize="18sp"
+        android:textColor="@color/text_muted"
         android:gravity="center"
-        android:layout_marginBottom="48dp" />
+        android:layout_marginBottom="32dp" />
 
     <LinearLayout
         android:layout_width="match_parent"
@@ -35,31 +35,31 @@
         <Button
             android:id="@+id/btn_continue"
             android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
+            android:layout_height="48dp"
+            android:minWidth="160dp"
             android:text="Continue"
             android:background="@drawable/dialog_btn_bg"
             android:textColor="@color/dialog_btn_text_color"
-            android:textSize="24sp"
-            android:paddingLeft="32dp"
-            android:paddingRight="32dp"
-            android:paddingTop="16dp"
-            android:paddingBottom="16dp"
-            android:layout_marginEnd="32dp"
+            android:textSize="18sp"
+            android:textStyle="bold"
+            android:paddingStart="24dp"
+            android:paddingEnd="24dp"
+            android:layout_marginEnd="24dp"
             android:focusable="true"
             android:focusableInTouchMode="true"/>
 
         <Button
             android:id="@+id/btn_start_over"
             android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Start Over (10)"
+            android:layout_height="48dp"
+            android:minWidth="160dp"
+            android:text="Start Over"
             android:background="@drawable/dialog_btn_bg"
             android:textColor="@color/dialog_btn_text_color"
-            android:textSize="24sp"
-            android:paddingLeft="32dp"
-            android:paddingRight="32dp"
-            android:paddingTop="16dp"
-            android:paddingBottom="16dp"
+            android:textSize="18sp"
+            android:textStyle="bold"
+            android:paddingStart="24dp"
+            android:paddingEnd="24dp"
             android:focusable="true"
             android:focusableInTouchMode="true"/>
 

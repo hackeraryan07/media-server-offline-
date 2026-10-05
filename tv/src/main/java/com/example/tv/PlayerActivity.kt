@@ -724,14 +724,15 @@ class PlayerActivity : AppCompatActivity() {
             seekBar.progress = (seekBar.progress + 1).coerceAtMost(1200)
         }
 
-        audioShiftDialog = android.app.AlertDialog.Builder(this)
-            .setTitle("Audio Shift")
+        val builder = android.app.AlertDialog.Builder(this)
             .setView(view)
             .setOnDismissListener {
                 isWaitingForAudioShiftChoice = false
                 audioShiftDialog = null
             }
-            .show()
+        audioShiftDialog = builder.create()
+        audioShiftDialog?.window?.setBackgroundDrawableResource(android.R.color.transparent)
+        audioShiftDialog?.show()
     }
 
     fun handleAudioShiftChoice(shiftMs: Long?) {

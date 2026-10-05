@@ -8,6 +8,7 @@ import android.os.Build
 import android.os.Bundle
 import android.util.Log
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.animation.AnimatedContent
@@ -79,6 +80,13 @@ class MainActivity : ComponentActivity() {
                 var currentTitle by remember { mutableStateOf<String?>(null) }
                 val coroutineScope = rememberCoroutineScope()
                 val httpClient = remember { OkHttpClient() }
+
+                // Gracefully handle back press when streaming
+                BackHandler(enabled = isSyncing) {
+                    stopAudioSync()
+                    isSyncing = false
+                    syncingIp = ""
+                }
 
                 // State polling while syncing
                 LaunchedEffect(isSyncing, syncingIp) {

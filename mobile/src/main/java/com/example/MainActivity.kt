@@ -12,6 +12,7 @@ import android.provider.MediaStore
 import android.provider.OpenableColumns
 import android.util.Log
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -103,6 +104,23 @@ fun ServerDashboardScreen() {
     var searchQuery by remember { mutableStateOf("") }
     var showDevicePopupForVideo by remember { mutableStateOf<LocalVideoServer.SharedVideo?>(null) }
     var selectedTvIp by remember { mutableStateOf<String?>(null) }
+
+    // Predictable hierarchical Back navigation
+    BackHandler(enabled = selectedTvIp != null) {
+        selectedTvIp = null
+    }
+    BackHandler(enabled = selectedTvIp == null && showDevicePopupForVideo != null) {
+        showDevicePopupForVideo = null
+    }
+    BackHandler(enabled = selectedTvIp == null && showDevicePopupForVideo == null && selectedFolder != null) {
+        selectedFolder = null
+    }
+    BackHandler(enabled = selectedTvIp == null && showDevicePopupForVideo == null && selectedFolder == null && searchQuery.isNotBlank()) {
+        searchQuery = ""
+    }
+    BackHandler(enabled = selectedTvIp == null && showDevicePopupForVideo == null && selectedFolder == null && searchQuery.isBlank() && currentPage != 0) {
+        currentPage = 0
+    }
 
     LaunchedEffect(Unit) {
         while (true) {
