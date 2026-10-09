@@ -1,5 +1,7 @@
 # Proguard / R8 optimization rules for Mobile Stream Server
 
+-dontoptimize
+
 # Keep database entities and DAOs
 -keep class * extends androidx.room.RoomDatabase
 -keep @androidx.room.Entity class * { *; }
