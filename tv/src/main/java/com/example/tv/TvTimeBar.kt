@@ -15,7 +15,7 @@ class TvTimeBar @JvmOverloads constructor(
 ) : View(context, attrs, defStyleAttr) {
 
     private val trackPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.parseColor("#4DFFFFFF") }
-    private val progressPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.parseColor("#D3E3FD") } 
+    private val progressPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.WHITE } 
     private val thumbPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.WHITE }
 
     var duration: Long = 0

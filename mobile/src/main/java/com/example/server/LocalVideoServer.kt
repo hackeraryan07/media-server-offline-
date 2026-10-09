@@ -13,6 +13,9 @@ import java.util.concurrent.ConcurrentHashMap
 import com.example.db.AppDatabase
 import com.example.db.Playlist
 import com.example.db.PlaylistItem
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -42,9 +45,33 @@ class LocalVideoServer(
         // No presets loaded. Waiting for local files to be shared.
     }
 
+    private val _videosFlow = MutableStateFlow<List<SharedVideo>>(emptyList())
+    val videosFlow: StateFlow<List<SharedVideo>> = _videosFlow.asStateFlow()
+
+    private val _connectedClientsFlow = MutableStateFlow<List<ConnectedClient>>(emptyList())
+    val connectedClientsFlow: StateFlow<List<ConnectedClient>> = _connectedClientsFlow.asStateFlow()
+
+    fun getExistingVideoIds(): Set<String> = sharedFiles.keys.toSet()
+
+    fun updateVideosFlow() {
+        _videosFlow.value = getVideosList()
+    }
+
+    private fun updateClientsFlow() {
+        _connectedClientsFlow.value = getConnectedClients()
+    }
+
     fun addLocalVideo(id: String, title: String, uri: Uri, size: Long, folder: String = "Local") {
         val thumbUrl = "http://127.0.0.1:$port/thumbnail/$id"
         sharedFiles[id] = SharedVideo(id, title, uri.toString(), size, "Local", isLocal = true, folder = folder, thumbnailUrl = thumbUrl)
+        updateVideosFlow()
+    }
+
+    fun addLocalVideosBatch(videos: List<SharedVideo>) {
+        for (v in videos) {
+            sharedFiles[v.id] = v
+        }
+        updateVideosFlow()
     }
 
     fun getVideosList(): List<SharedVideo> {
@@ -59,6 +86,7 @@ class LocalVideoServer(
     fun removeVideo(id: String) {
         if (sharedFiles[id]?.isLocal == true) {
             sharedFiles.remove(id)
+            updateVideosFlow()
         }
     }
 
@@ -96,6 +124,8 @@ class LocalVideoServer(
             Log.e("LocalVideoServer", "Error closing server socket", e)
         }
         serverSocket = null
+        connectedClientsMap.clear()
+        updateClientsFlow()
     }
 
     data class ConnectedClient(val ip: String, val name: String)
@@ -124,10 +154,10 @@ class LocalVideoServer(
 
             val isLoopback = clientIp == "127.0.0.1" || clientIp == "::1" || clientIp == "0:0:0:0:0:0:0:1"
             if (!isLoopback) {
-                if (path.startsWith("/videos")) {
+                val prev = connectedClientsMap[clientIp]
+                if (prev != deviceName) {
                     connectedClientsMap[clientIp] = deviceName
-                } else if (!connectedClientsMap.containsKey(clientIp)) {
-                    connectedClientsMap[clientIp] = deviceName
+                    updateClientsFlow()
                 }
             }
 
@@ -268,6 +298,7 @@ class LocalVideoServer(
                                 .putLong("progress_$id", position)
                                 .putLong("duration_$id", duration)
                                 .apply()
+                            updateVideosFlow()
                             
                             sendSimpleResponse(socket, "200 OK", "application/json", "{\"status\":\"success\"}")
                         } catch (e: Exception) {

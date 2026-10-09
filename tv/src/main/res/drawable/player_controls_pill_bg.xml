@@ -1,9 +1,57 @@
 <?xml version="1.0" encoding="utf-8"?>
-<shape xmlns:android="http://schemas.android.com/apk/res/android"
-    android:shape="rectangle">
-    <solid android:color="#D91B1724"/>
-    <corners android:radius="28dp"/>
-    <stroke
-        android:width="1.5dp"
-        android:color="#4D4460"/>
-</shape>
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Layer 1: Ambient Depth Base -->
+    <item>
+        <shape android:shape="rectangle">
+            <corners android:radius="28dp"/>
+            <solid android:color="#26000000"/>
+        </shape>
+    </item>
+
+    <!-- Layer 2: Apple Liquid Frosted Glass Body -->
+    <item
+        android:top="1dp"
+        android:bottom="1dp"
+        android:left="1dp"
+        android:right="1dp">
+        <shape android:shape="rectangle">
+            <corners android:radius="27dp"/>
+            <gradient
+                android:angle="270"
+                android:startColor="#38FFFFFF"
+                android:centerColor="#1AFFFFFF"
+                android:endColor="#0EFFFFFF"
+                android:type="linear"/>
+        </shape>
+    </item>
+
+    <!-- Layer 3: Glass Specular Reflection Highlight (Upper Curved Sheen) -->
+    <item
+        android:top="1dp"
+        android:bottom="26dp"
+        android:left="2dp"
+        android:right="2dp">
+        <shape android:shape="rectangle">
+            <corners
+                android:topLeftRadius="26dp"
+                android:topRightRadius="26dp"
+                android:bottomLeftRadius="0dp"
+                android:bottomRightRadius="0dp"/>
+            <gradient
+                android:angle="270"
+                android:startColor="#45FFFFFF"
+                android:endColor="#00FFFFFF"
+                android:type="linear"/>
+        </shape>
+    </item>
+
+    <!-- Layer 4: Apple Glass Specular Perimeter Rim -->
+    <item>
+        <shape android:shape="rectangle">
+            <corners android:radius="28dp"/>
+            <stroke
+                android:width="1.5dp"
+                android:color="#66FFFFFF"/>
+        </shape>
+    </item>
+</layer-list>

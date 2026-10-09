@@ -20,7 +20,7 @@ android {
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     resourceConfigurations += setOf("en")
     ndk {
-      abiFilters += listOf("arm64-v8a")
+      abiFilters += listOf("arm64-v8a", "x86_64")
     }
   }
 
@@ -137,4 +137,15 @@ dependencies {
   debugImplementation(libs.androidx.compose.ui.test.manifest)
   debugImplementation(libs.androidx.compose.ui.tooling)
   "ksp"(libs.androidx.room.compiler)
+}
+
+tasks.register<Copy>("copyDebugApkToAppOutput") {
+  from(layout.buildDirectory.dir("outputs/apk/debug"))
+  into(rootProject.layout.projectDirectory.dir("app/build/outputs/apk/debug"))
+  include("mobile-debug.apk")
+  rename("mobile-debug.apk", "app-debug.apk")
+}
+
+tasks.matching { it.name == "assembleDebug" }.configureEach {
+  finalizedBy("copyDebugApkToAppOutput")
 }

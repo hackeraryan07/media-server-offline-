@@ -66,6 +66,7 @@ import com.example.server.ServerManager
 import com.example.server.ServerService
 import com.example.ui.theme.GreenSuccess
 import com.example.ui.theme.MyApplicationTheme
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -94,13 +95,14 @@ fun ServerDashboardScreen() {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
 
-    var isServerRunning by remember { mutableStateOf(ServerManager.isServerRunning) }
-    var serverAddress by remember { mutableStateOf(ServerManager.serverAddress) }
-    var errorMessage by remember { mutableStateOf(ServerManager.errorMessage) }
-    var videoList by remember { mutableStateOf(ServerManager.localVideoServer?.getVideosList() ?: emptyList()) }
+    val isServerRunning by ServerManager.isServerRunningFlow.collectAsStateWithLifecycle()
+    val serverAddress by ServerManager.serverAddressFlow.collectAsStateWithLifecycle()
+    val errorMessage by ServerManager.errorMessageFlow.collectAsStateWithLifecycle()
+    val videoList by ServerManager.videosFlow.collectAsStateWithLifecycle()
+    val connectedClients by ServerManager.connectedClientsFlow.collectAsStateWithLifecycle()
+
     var currentPage by remember { mutableIntStateOf(0) }
     var selectedFolder by remember { mutableStateOf<String?>(null) }
-    var connectedClients by remember { mutableStateOf(ServerManager.localVideoServer?.getConnectedClients() ?: emptyList()) }
     var searchQuery by remember { mutableStateOf("") }
     var showDevicePopupForVideo by remember { mutableStateOf<LocalVideoServer.SharedVideo?>(null) }
     var selectedTvIp by remember { mutableStateOf<String?>(null) }
@@ -122,19 +124,6 @@ fun ServerDashboardScreen() {
         currentPage = 0
     }
 
-    LaunchedEffect(Unit) {
-        while (true) {
-            delay(1000)
-            isServerRunning = ServerManager.isServerRunning
-            serverAddress = ServerManager.serverAddress
-            errorMessage = ServerManager.errorMessage
-            if (isServerRunning) {
-                connectedClients = ServerManager.localVideoServer?.getConnectedClients() ?: emptyList()
-            }
-            videoList = ServerManager.localVideoServer?.getVideosList() ?: emptyList()
-        }
-    }
-
     val permissionToRequest = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
         Manifest.permission.READ_MEDIA_VIDEO
     } else {
@@ -145,7 +134,9 @@ fun ServerDashboardScreen() {
         contract = ActivityResultContracts.RequestPermission()
     ) { isGranted ->
         if (isGranted) {
-            ServerManager.localVideoServer?.let { scanLocalMedia(context, it) }
+            coroutineScope.launch {
+                ServerManager.localVideoServer?.let { scanLocalMedia(context, it) }
+            }
         }
     }
 
@@ -161,10 +152,12 @@ fun ServerDashboardScreen() {
         contract = ActivityResultContracts.PickVisualMedia()
     ) { uri: Uri? ->
         if (uri != null) {
-            val name = getFileName(context, uri) ?: "Selected Mobile Stream"
-            val size = getFileSize(context, uri)
-            val randomId = "local_" + System.currentTimeMillis()
-            ServerManager.localVideoServer?.addLocalVideo(randomId, name, uri, size)
+            coroutineScope.launch(Dispatchers.IO) {
+                val name = getFileName(context, uri) ?: "Selected Mobile Stream"
+                val size = getFileSize(context, uri)
+                val randomId = "local_" + System.currentTimeMillis()
+                ServerManager.localVideoServer?.addLocalVideo(randomId, name, uri, size)
+            }
         }
     }
 
@@ -495,7 +488,7 @@ fun ServerDashboardScreen() {
                                         verticalArrangement = Arrangement.spacedBy(10.dp),
                                         modifier = Modifier.fillMaxWidth().weight(1f)
                                     ) {
-                                        items(connectedClients) { client ->
+                                        items(items = connectedClients, key = { it.ip }) { client ->
                                             Card(
                                                 modifier = Modifier
                                                     .fillMaxWidth()
@@ -596,7 +589,9 @@ fun ServerDashboardScreen() {
                                 )
 
                                 if (searchQuery.isNotEmpty()) {
-                                    val searchResults = videoList.filter { it.title.contains(searchQuery, ignoreCase = true) }
+                                    val searchResults = remember(videoList, searchQuery) {
+                                        videoList.filter { it.title.contains(searchQuery, ignoreCase = true) }
+                                    }
                                     Text(
                                         text = "Search Results (${searchResults.size})",
                                         style = MaterialTheme.typography.titleSmall,
@@ -629,7 +624,11 @@ fun ServerDashboardScreen() {
                                             modifier = Modifier.weight(1f),
                                             verticalArrangement = Arrangement.spacedBy(8.dp)
                                         ) {
-                                            items(searchResults) { video ->
+                                            items(
+                                                items = searchResults,
+                                                key = { it.id },
+                                                contentType = { "video_item" }
+                                            ) { video ->
                                                 VideoItemRow(
                                                     video = video,
                                                     onClick = { showDevicePopupForVideo = video }
@@ -647,8 +646,12 @@ fun ServerDashboardScreen() {
                                             color = MaterialTheme.colorScheme.onSurface
                                         )
 
-                                        val folderGroups = videoList.groupBy { it.folder ?: "Videos" }
-                                        val allFolders = listOf("All Videos") + folderGroups.keys.toList()
+                                        val folderGroups = remember(videoList) {
+                                            videoList.groupBy { it.folder ?: "Videos" }
+                                        }
+                                        val allFolders = remember(folderGroups) {
+                                            listOf("All Videos") + folderGroups.keys.toList()
+                                        }
 
                                         LazyVerticalGrid(
                                             columns = GridCells.Fixed(2),
@@ -656,7 +659,7 @@ fun ServerDashboardScreen() {
                                             verticalArrangement = Arrangement.spacedBy(12.dp),
                                             modifier = Modifier.weight(1f)
                                         ) {
-                                            items(allFolders) { folderName ->
+                                            items(items = allFolders, key = { it }) { folderName ->
                                                 Card(
                                                     modifier = Modifier
                                                         .fillMaxWidth()
@@ -730,10 +733,12 @@ fun ServerDashboardScreen() {
                                             )
                                         }
 
-                                        val displayedVideos = if (selectedFolder == "All Videos") {
-                                            videoList
-                                        } else {
-                                            videoList.filter { (it.folder ?: "Videos") == selectedFolder }
+                                        val displayedVideos = remember(videoList, selectedFolder) {
+                                            if (selectedFolder == "All Videos") {
+                                                videoList
+                                            } else {
+                                                videoList.filter { (it.folder ?: "Videos") == selectedFolder }
+                                            }
                                         }
 
                                         if (displayedVideos.isEmpty()) {
@@ -751,7 +756,11 @@ fun ServerDashboardScreen() {
                                                 modifier = Modifier.weight(1f),
                                                 verticalArrangement = Arrangement.spacedBy(8.dp)
                                             ) {
-                                                items(displayedVideos) { video ->
+                                                items(
+                                                    items = displayedVideos,
+                                                    key = { it.id },
+                                                    contentType = { "video_item" }
+                                                ) { video ->
                                                     VideoItemRow(
                                                         video = video,
                                                         onClick = { showDevicePopupForVideo = video }
@@ -1109,7 +1118,7 @@ fun ServerDashboardScreen() {
                                         modifier = Modifier.weight(1f),
                                         verticalArrangement = Arrangement.spacedBy(8.dp)
                                     ) {
-                                        items(playlists) { playlistInfo ->
+                                        items(items = playlists, key = { it.playlist.id }) { playlistInfo ->
                                             Card(
                                                 modifier = Modifier.fillMaxWidth(),
                                                 shape = RoundedCornerShape(16.dp),
@@ -1217,7 +1226,7 @@ fun ServerDashboardScreen() {
                         )
                     } else {
                         LazyColumn(modifier = Modifier.weight(1f, fill = false)) {
-                            items(connectedClients) { client ->
+                            items(items = connectedClients, key = { it.ip }) { client ->
                                 Card(
                                     modifier = Modifier
                                         .fillMaxWidth()
@@ -1271,7 +1280,7 @@ fun ServerDashboardScreen() {
                         )
                     } else {
                         LazyColumn(modifier = Modifier.weight(1f, fill = false)) {
-                            items(playlists) { playlist ->
+                            items(items = playlists, key = { it.id }) { playlist ->
                                 Card(
                                     modifier = Modifier
                                         .fillMaxWidth()
@@ -1364,13 +1373,24 @@ private fun VideoItemRow(
                     ),
                 contentAlignment = Alignment.Center
             ) {
-                if (video.thumbnailUrl.isNotEmpty()) {
+                val imageModel: Any? = if (video.isLocal && video.uriString.isNotEmpty()) {
+                    Uri.parse(video.uriString)
+                } else if (video.thumbnailUrl.isNotEmpty()) {
+                    video.thumbnailUrl
+                } else null
+
+                if (imageModel != null) {
                     GlideImage(
-                        model = video.thumbnailUrl,
+                        model = imageModel,
                         contentDescription = "Thumbnail",
                         contentScale = ContentScale.Crop,
                         modifier = Modifier.fillMaxSize()
-                    )
+                    ) { requestBuilder ->
+                        requestBuilder
+                            .override(128, 128)
+                            .centerCrop()
+                            .diskCacheStrategy(com.bumptech.glide.load.engine.DiskCacheStrategy.AUTOMATIC)
+                    }
                 } else {
                     Icon(
                         imageVector = Icons.Default.PlayArrow,
@@ -1459,12 +1479,12 @@ private fun getFileSize(context: Context, uri: Uri): Long {
 
 private fun formatBytes(bytes: Long): String {
     if (bytes <= 0) return "0 B"
-    val units = arrayOf("B", "KB", "MB", "GB")
-    val digitGroups = (Math.log10(bytes.toDouble()) / Math.log10(1024.0)).toInt()
+    val units = arrayOf("B", "KB", "MB", "GB", "TB")
+    val digitGroups = (Math.log10(bytes.toDouble()) / Math.log10(1024.0)).toInt().coerceIn(0, units.size - 1)
     return String.format("%.2f %s", bytes / Math.pow(1024.0, digitGroups.toDouble()), units[digitGroups])
 }
 
-private fun scanLocalMedia(context: Context, localVideoServer: LocalVideoServer) {
+private suspend fun scanLocalMedia(context: Context, localVideoServer: LocalVideoServer) = kotlinx.coroutines.withContext(Dispatchers.IO) {
     val collection = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
         MediaStore.Video.Media.getContentUri(MediaStore.VOLUME_EXTERNAL)
     } else {
@@ -1479,6 +1499,9 @@ private fun scanLocalMedia(context: Context, localVideoServer: LocalVideoServer)
     )
 
     try {
+        val existingIds = localVideoServer.getExistingVideoIds()
+        val newVideos = mutableListOf<LocalVideoServer.SharedVideo>()
+
         context.contentResolver.query(
             collection,
             projection,
@@ -1493,16 +1516,31 @@ private fun scanLocalMedia(context: Context, localVideoServer: LocalVideoServer)
 
             while (cursor.moveToNext()) {
                 val id = cursor.getLong(idColumn)
-                val name = cursor.getString(nameColumn) ?: "Unknown Video"
-                val size = cursor.getLong(sizeColumn)
-                val folder = cursor.getString(bucketColumn) ?: "Internal Storage"
-
-                val contentUri = ContentUris.withAppendedId(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, id)
                 val strId = "local_media_$id"
-                if (localVideoServer.getVideosList().none { it.id == strId }) {
-                    localVideoServer.addLocalVideo(strId, name, contentUri, size, folder)
+                if (strId !in existingIds) {
+                    val name = cursor.getString(nameColumn) ?: "Unknown Video"
+                    val size = cursor.getLong(sizeColumn)
+                    val folder = cursor.getString(bucketColumn) ?: "Internal Storage"
+
+                    val contentUri = ContentUris.withAppendedId(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, id)
+                    val thumbUrl = "http://127.0.0.1:8999/thumbnail/$strId"
+                    newVideos.add(
+                        LocalVideoServer.SharedVideo(
+                            id = strId,
+                            title = name,
+                            uriString = contentUri.toString(),
+                            size = size,
+                            duration = "Local",
+                            isLocal = true,
+                            folder = folder,
+                            thumbnailUrl = thumbUrl
+                        )
+                    )
                 }
             }
+        }
+        if (newVideos.isNotEmpty()) {
+            localVideoServer.addLocalVideosBatch(newVideos)
         }
     } catch (e: Exception) {
         Log.e("MainActivity", "Error scanning local media", e)
