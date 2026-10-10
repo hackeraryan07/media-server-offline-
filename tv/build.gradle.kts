@@ -15,7 +15,7 @@ android {
     versionName = "1.0"
     resourceConfigurations += setOf("en")
     ndk {
-      abiFilters += listOf("armeabi-v7a")
+      abiFilters += listOf("arm64-v8a", "armeabi-v7a")
     }
   }
 
@@ -51,9 +51,6 @@ android {
     }
   }
   packaging {
-    jniLibs {
-      useLegacyPackaging = true
-    }
     resources {
       excludes += listOf(
         "/META-INF/{AL2.0,LGPL2.1}",
@@ -62,11 +59,7 @@ android {
         "META-INF/*.version",
         "META-INF/LICENSE*",
         "META-INF/NOTICE*",
-        "DebugProbesKt.bin",
-        "assets/hrtfs/**",
-        "assets/lua/**",
-        "hrtfs/**",
-        "lua/**"
+        "DebugProbesKt.bin"
       )
     }
   }
@@ -92,5 +85,7 @@ dependencies {
 
   implementation("com.github.bumptech.glide:glide:4.16.0")
   "ksp"("com.github.bumptech.glide:ksp:4.16.0")
-  implementation("org.videolan.android:libvlc-all:3.6.0-eap14")
+  implementation("androidx.media3:media3-exoplayer:1.2.1")
+  implementation("androidx.media3:media3-ui:1.2.1")
+  implementation("androidx.media3:media3-ui-leanback:1.2.1")
 }

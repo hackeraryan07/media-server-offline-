@@ -14,44 +14,21 @@ class TvSettingsActivity : Activity() {
         setContentView(R.layout.activity_settings)
 
         val switchPrevent = findViewById<Switch>(R.id.switch_prevent_screensaver)
-        val radioGroupPlayer = findViewById<RadioGroup>(R.id.radio_group_player_default)
-        val radioPlayerInternal = findViewById<RadioButton>(R.id.radio_player_internal)
-        val radioPlayerExternal = findViewById<RadioButton>(R.id.radio_player_external)
-        val radioPlayerAsk = findViewById<RadioButton>(R.id.radio_player_ask)
-
         val radioGroupResume = findViewById<RadioGroup>(R.id.radio_group_resume_default)
         val radioStartOver = findViewById<RadioButton>(R.id.radio_start_over)
         val radioContinue = findViewById<RadioButton>(R.id.radio_continue)
-
+        
         val prefs = getSharedPreferences("app_settings", Context.MODE_PRIVATE)
         val isPreventEnabled = prefs.getBoolean("prevent_screensaver", false)
-        val defaultPlayer = prefs.getString("default_player", "internal") ?: "internal"
-        val resumeDefault = prefs.getString("resume_default", "start_over") ?: "start_over"
-
+        val resumeDefault = prefs.getString("resume_default", "start_over")
+        
         switchPrevent.isChecked = isPreventEnabled
         switchPrevent.requestFocus()
-
+        
         switchPrevent.setOnCheckedChangeListener { _, isChecked ->
             prefs.edit().putBoolean("prevent_screensaver", isChecked).apply()
         }
 
-        // Configure player selection
-        when (defaultPlayer) {
-            "external" -> radioPlayerExternal.isChecked = true
-            "ask" -> radioPlayerAsk.isChecked = true
-            else -> radioPlayerInternal.isChecked = true
-        }
-
-        radioGroupPlayer.setOnCheckedChangeListener { _, checkedId ->
-            val value = when (checkedId) {
-                R.id.radio_player_external -> "external"
-                R.id.radio_player_ask -> "ask"
-                else -> "internal"
-            }
-            prefs.edit().putString("default_player", value).apply()
-        }
-
-        // Configure auto-resume action
         if (resumeDefault == "continue") {
             radioContinue.isChecked = true
         } else {

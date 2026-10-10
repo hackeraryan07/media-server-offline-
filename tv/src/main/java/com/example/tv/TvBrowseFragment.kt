@@ -343,24 +343,29 @@ class TvBrowseFragment : BrowseSupportFragment() {
                 }
                 
                 if (item.id != "err" && item.url.isNotEmpty()) {
-                    var playlist: ArrayList<TvVideo>? = null
-                    var currentIndex = 0
-                    if (row is androidx.leanback.widget.ListRow) {
-                        val adapter = row.adapter
-                        if (adapter is androidx.leanback.widget.ArrayObjectAdapter) {
-                            playlist = ArrayList<TvVideo>()
-                            for (i in 0 until adapter.size()) {
-                                val rowItem = adapter.get(i) as? TvVideo
-                                if (rowItem != null) {
-                                    playlist.add(rowItem)
-                                    if (rowItem.id == item.id) {
-                                        currentIndex = i
+                    val intent = Intent(requireContext(), PlayerActivity::class.java).apply {
+                        putExtra("video", item)
+                        
+                        if (row is androidx.leanback.widget.ListRow) {
+                            val adapter = row.adapter
+                            if (adapter is androidx.leanback.widget.ArrayObjectAdapter) {
+                                val playlist = ArrayList<TvVideo>()
+                                var currentIndex = 0
+                                for (i in 0 until adapter.size()) {
+                                    val rowItem = adapter.get(i) as? TvVideo
+                                    if (rowItem != null) {
+                                        playlist.add(rowItem)
+                                        if (rowItem.id == item.id) {
+                                            currentIndex = i
+                                        }
                                     }
                                 }
+                                putExtra("playlist", playlist)
+                                putExtra("currentIndex", currentIndex)
                             }
                         }
                     }
-                    TvPlayerLauncher.launch(requireActivity(), item, playlist, currentIndex)
+                    startActivity(intent)
                 }
             }
         }
