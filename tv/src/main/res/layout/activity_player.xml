@@ -6,13 +6,11 @@
 	android:layout_height="match_parent"
 	android:background="#000000">
 
-	<androidx.media3.ui.PlayerView
+	<org.videolan.libvlc.util.VLCVideoLayout
 		android:id="@+id/internalVideoView"
 		android:layout_width="match_parent"
 		android:layout_height="match_parent"
-		android:layout_centerInParent="true"
-		app:surface_type="texture_view"
-        app:use_controller="false" />
+		android:layout_centerInParent="true" />
 
 	<ProgressBar
 		android:id="@+id/playerLoadingSpinner"

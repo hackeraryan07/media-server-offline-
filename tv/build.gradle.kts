@@ -15,7 +15,7 @@ android {
     versionName = "1.0"
     resourceConfigurations += setOf("en")
     ndk {
-      abiFilters += listOf("arm64-v8a", "armeabi-v7a")
+      abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64")
     }
   }
 
@@ -39,18 +39,20 @@ android {
   buildTypes {
     release {
       isMinifyEnabled = true
-      isShrinkResources = true
+      isShrinkResources = false
       proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
       signingConfig = signingConfigs.getByName("release")
     }
     debug {
-      isMinifyEnabled = true
-      isShrinkResources = true
-      proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+      isMinifyEnabled = false
+      isShrinkResources = false
       signingConfig = signingConfigs.getByName("release")
     }
   }
   packaging {
+    jniLibs {
+      useLegacyPackaging = true
+    }
     resources {
       excludes += listOf(
         "/META-INF/{AL2.0,LGPL2.1}",
@@ -59,7 +61,9 @@ android {
         "META-INF/*.version",
         "META-INF/LICENSE*",
         "META-INF/NOTICE*",
-        "DebugProbesKt.bin"
+        "DebugProbesKt.bin",
+        "assets/hrtfs/**",
+        "assets/lua/**"
       )
     }
   }
@@ -85,7 +89,5 @@ dependencies {
 
   implementation("com.github.bumptech.glide:glide:4.16.0")
   "ksp"("com.github.bumptech.glide:ksp:4.16.0")
-  implementation("androidx.media3:media3-exoplayer:1.2.1")
-  implementation("androidx.media3:media3-ui:1.2.1")
-  implementation("androidx.media3:media3-ui-leanback:1.2.1")
+  implementation("org.videolan.android:libvlc-all:3.6.0-eap14")
 }

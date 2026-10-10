@@ -7,50 +7,52 @@ import android.os.Handler
 import android.os.Looper
 import android.view.KeyEvent
 import android.view.View
-import android.widget.SeekBar
+import android.widget.ImageButton
+import android.widget.ProgressBar
 import android.widget.TextView
-import androidx.appcompat.app.AppCompatActivity
-import androidx.media3.common.MediaItem
-import androidx.media3.common.Player
-import androidx.media3.exoplayer.ExoPlayer
-import androidx.media3.ui.PlayerView
-import androidx.media3.exoplayer.DefaultRenderersFactory
-
-import org.json.JSONObject
 import android.widget.Toast
+import androidx.appcompat.app.AppCompatActivity
+import org.json.JSONObject
+import org.videolan.libvlc.LibVLC
+import org.videolan.libvlc.Media
+import org.videolan.libvlc.MediaPlayer
+import org.videolan.libvlc.util.VLCVideoLayout
 
 class PlayerActivity : AppCompatActivity() {
 
-    private lateinit var playerView: PlayerView
-    private var exoPlayer: ExoPlayer? = null
+    private lateinit var videoLayout: VLCVideoLayout
+    private var libVLC: LibVLC? = null
+    private var mediaPlayer: MediaPlayer? = null
+
     private lateinit var overlay: View
     private lateinit var titleText: TextView
-    private lateinit var btnPlayPause: android.widget.ImageButton
-    private lateinit var timeBar: com.example.tv.TvTimeBar
+    private lateinit var btnPlayPause: ImageButton
+    private lateinit var timeBar: TvTimeBar
     private lateinit var txtCurrentTime: TextView
     private lateinit var txtTotalTime: TextView
-    private lateinit var loadingSpinner: android.widget.ProgressBar
+    private lateinit var loadingSpinner: ProgressBar
 
     private var lastFocusedTopBarView: View? = null
     private var lastFocusedMiddleRightView: View? = null
     private var lastFocusedControlsPillView: View? = null
     private var lastFocusedUpperView: View? = null
     private var ignoreFocusMemory = false
-    
+
     private var isManualSkip = false
     private var currentTimeoutMs = 5000L
 
     private val hideHandler = Handler(Looper.getMainLooper())
     private var videoUrlString: String? = null
     private val progressHandler = Handler(Looper.getMainLooper())
-    
+    private var pendingSeekPosition: Long = 0L
+
     private val antiScreenSaverHandler = Handler(Looper.getMainLooper())
     private val antiScreenSaverRunnable = object : Runnable {
         override fun run() {
             try {
                 val prefs = getSharedPreferences("app_settings", Context.MODE_PRIVATE)
                 val isPreventEnabled = prefs.getBoolean("prevent_screensaver", false)
-                if (isPreventEnabled && exoPlayer?.isPlaying == true) {
+                if (isPreventEnabled && mediaPlayer?.isPlaying == true) {
                     window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
                     val eventDown = KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_UNKNOWN)
                     val eventUp = KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_UNKNOWN)
@@ -63,7 +65,7 @@ class PlayerActivity : AppCompatActivity() {
             antiScreenSaverHandler.postDelayed(this, 30000)
         }
     }
-    
+
     private var playlist: List<TvVideo>? = null
     private var currentIndex: Int = 0
     private var currentVideo: TvVideo? = null
@@ -72,22 +74,26 @@ class PlayerActivity : AppCompatActivity() {
     private var isRemoteAudioEnabled = false
     private var audioShiftMs: Long = 0L
     private var isWaitingForAudioShiftChoice = false
-    private var isContinuousSyncEnabled = true // defaultly keep sync on
+    private var isContinuousSyncEnabled = true // default keep sync on
 
     private fun saveAudioShift(shift: Long) {
         audioShiftMs = shift
         getSharedPreferences("PlayerPrefs", Context.MODE_PRIVATE).edit().putLong("audioShiftMs", shift).apply()
+        try {
+            mediaPlayer?.setAudioDelay(shift * 1000L)
+        } catch (e: Exception) {}
     }
+
     private var speedDialog: android.app.AlertDialog? = null
     private var audioShiftDialog: android.app.AlertDialog? = null
 
     private fun updateLockState() {
-        val btnLock = findViewById<android.widget.ImageButton>(R.id.btnLock)
+        val btnLock = findViewById<ImageButton>(R.id.btnLock)
         val lockColor = if (isLocked) android.graphics.Color.RED else android.graphics.Color.WHITE
         btnLock.setColorFilter(lockColor, android.graphics.PorterDuff.Mode.SRC_IN)
-        
+
         val alphaVal = if (isLocked) 0.5f else 1.0f
-        
+
         val allControls = listOf(
             R.id.playerBackBtn, R.id.btnPlaylist, R.id.btnCast, R.id.btnScreenshot,
             R.id.btnMute, R.id.btnRotate, R.id.btnAudioTrack, R.id.btnSubtitles,
@@ -96,7 +102,7 @@ class PlayerActivity : AppCompatActivity() {
             R.id.btnNext, R.id.btnForward10, R.id.btnResize,
             R.id.playerTitleText, R.id.playerCurrentTime, R.id.playerTotalTime
         )
-        
+
         for (id in allControls) {
             findViewById<View>(id)?.let { view ->
                 view.alpha = alphaVal
@@ -104,16 +110,16 @@ class PlayerActivity : AppCompatActivity() {
                 view.isClickable = !isLocked
             }
         }
-        
+
         timeBar.isFocusable = !isLocked
-        
+
         if (isLocked) {
             btnLock.requestFocus()
         }
     }
 
     private fun updateAudioTrackButtonState() {
-        val btn = findViewById<android.widget.ImageButton>(R.id.btnAudioTrack)
+        val btn = findViewById<ImageButton>(R.id.btnAudioTrack)
         if (isRemoteAudioEnabled) {
             btn.setColorFilter(android.graphics.Color.YELLOW, android.graphics.PorterDuff.Mode.SRC_IN)
         } else {
@@ -123,10 +129,10 @@ class PlayerActivity : AppCompatActivity() {
 
     private val progressRunnable = object : Runnable {
         override fun run() {
-            exoPlayer?.let { player ->
+            mediaPlayer?.let { player ->
+                val currentPos = player.time
+                val duration = player.length
                 if (player.isPlaying) {
-                    val currentPos = player.currentPosition
-                    val duration = player.duration
                     if (duration > 0 && currentPos >= 0) {
                         currentVideo?.let { video ->
                             video.watchedPosition = currentPos
@@ -135,15 +141,13 @@ class PlayerActivity : AppCompatActivity() {
                         }
                     }
                 }
-                
+
                 // Update timebar
-                val pos = player.currentPosition
-                val dur = player.duration
-                if (dur > 0) {
-                    timeBar.duration = dur
-                    timeBar.position = pos
-                    txtCurrentTime.text = formatTime(pos)
-                    txtTotalTime.text = formatTime(dur)
+                if (duration > 0) {
+                    timeBar.duration = duration
+                    timeBar.position = currentPos
+                    txtCurrentTime.text = formatTime(currentPos)
+                    txtTotalTime.text = formatTime(duration)
                 }
             }
             progressHandler.postDelayed(this, 1000)
@@ -161,8 +165,8 @@ class PlayerActivity : AppCompatActivity() {
         try {
             super.onCreate(savedInstanceState)
             setContentView(R.layout.activity_player)
-    
-            playerView = findViewById(R.id.internalVideoView)
+
+            videoLayout = findViewById(R.id.internalVideoView)
             overlay = findViewById(R.id.playerControlsOverlay)
             titleText = findViewById(R.id.playerTitleText)
             titleText.isSelected = true
@@ -171,56 +175,62 @@ class PlayerActivity : AppCompatActivity() {
             txtCurrentTime = findViewById(R.id.playerCurrentTime)
             txtTotalTime = findViewById(R.id.playerTotalTime)
             loadingSpinner = findViewById(R.id.playerLoadingSpinner)
-    
-            timeBar.listener = object : com.example.tv.TvTimeBar.OnScrubListener {
+
+            timeBar.listener = object : TvTimeBar.OnScrubListener {
                 override fun onScrubStart() {
-                    exoPlayer?.pause()
+                    mediaPlayer?.pause()
                     scheduleMetadataHide()
                 }
                 override fun onScrubMove(position: Long) {
                     txtCurrentTime.text = formatTime(position)
-                    exoPlayer?.seekTo(position)
+                    mediaPlayer?.time = position
                     scheduleMetadataHide()
                 }
                 override fun onScrubStop(position: Long) {
-                    exoPlayer?.seekTo(position)
-                    exoPlayer?.play()
+                    mediaPlayer?.time = position
+                    mediaPlayer?.play()
                     scheduleMetadataHide()
                 }
             }
-    
+
             findViewById<View>(R.id.btnNext).setOnClickListener {
-                exoPlayer?.seekToNextMediaItem()
+                playNext()
                 scheduleMetadataHide()
             }
             findViewById<View>(R.id.btnPrevious).setOnClickListener {
-                exoPlayer?.seekToPreviousMediaItem()
+                playPrevious()
                 scheduleMetadataHide()
             }
             findViewById<View>(R.id.btnForward10).setOnClickListener {
-                exoPlayer?.let { it.seekTo(it.currentPosition + 10000) }
+                mediaPlayer?.let { player ->
+                    val newPos = player.time + 10000L
+                    val dur = player.length
+                    player.time = if (dur > 0) newPos.coerceAtMost(dur) else newPos
+                }
                 scheduleMetadataHide()
             }
             findViewById<View>(R.id.btnReplay10).setOnClickListener {
-                exoPlayer?.let { it.seekTo(Math.max(0, it.currentPosition - 10000)) }
+                mediaPlayer?.let { player ->
+                    player.time = (player.time - 10000L).coerceAtLeast(0L)
+                }
                 scheduleMetadataHide()
             }
             btnPlayPause.setOnClickListener {
-                exoPlayer?.let {
+                mediaPlayer?.let {
                     if (it.isPlaying) it.pause() else it.play()
                 }
                 scheduleMetadataHide()
             }
             findViewById<View>(R.id.playerBackBtn).setOnClickListener { finish() }
 
-            val btnMute = findViewById<android.widget.ImageButton>(R.id.btnMute)
+            val btnMute = findViewById<ImageButton>(R.id.btnMute)
             btnMute.setOnClickListener {
-                exoPlayer?.let { player ->
-                    if (player.volume > 0f) {
-                        player.volume = 0f
+                mediaPlayer?.let { player ->
+                    if (player.volume > 0) {
+                        player.volume = 0
                         btnMute.setColorFilter(androidx.core.content.ContextCompat.getColor(this, R.color.accent_color), android.graphics.PorterDuff.Mode.SRC_IN)
                     } else {
-                        player.volume = 1f
+                        player.volume = 100
                         btnMute.setColorFilter(android.graphics.Color.parseColor("#ffffff"), android.graphics.PorterDuff.Mode.SRC_IN)
                     }
                 }
@@ -231,12 +241,13 @@ class PlayerActivity : AppCompatActivity() {
                 isWaitingForSpeedChoice = true
                 val speeds = arrayOf("0.5x", "0.75x", "1.0x", "1.25x", "1.5x", "2.0x")
                 val speedValues = arrayOf(0.5f, 0.75f, 1.0f, 1.25f, 1.5f, 2.0f)
-                var selectedIndex = speedValues.indexOf(exoPlayer?.playbackParameters?.speed ?: 1.0f)
+                val currentRate = mediaPlayer?.rate ?: 1.0f
+                var selectedIndex = speedValues.indexOfFirst { kotlin.math.abs(it - currentRate) < 0.05f }
                 if (selectedIndex == -1) selectedIndex = 2
-                
+
                 speedDialog = android.app.AlertDialog.Builder(this@PlayerActivity)
                     .setTitle("Playback Speed")
-                    .setSingleChoiceItems(speeds, selectedIndex) { dialog, which ->
+                    .setSingleChoiceItems(speeds, selectedIndex) { _, which ->
                         val selectedSpeed = speedValues[which]
                         this@PlayerActivity.handleSpeedChoice(selectedSpeed)
                     }
@@ -245,21 +256,35 @@ class PlayerActivity : AppCompatActivity() {
                         speedDialog = null
                     }
                     .create()
-                    
+
                 speedDialog?.show()
                 scheduleMetadataHide()
             }
 
             var resizeIndex = 0
-            val resizeModes = listOf(
-                androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT,
-                androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FILL,
-                androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_ZOOM
-            )
-            val resizeNames = listOf("Fit", "Fill", "Zoom")
+            val resizeNames = listOf("Fit", "16:9", "4:3", "Original", "Zoom")
             findViewById<View>(R.id.btnResize).setOnClickListener {
-                resizeIndex = (resizeIndex + 1) % resizeModes.size
-                playerView.resizeMode = resizeModes[resizeIndex]
+                resizeIndex = (resizeIndex + 1) % resizeNames.size
+                when (resizeNames[resizeIndex]) {
+                    "Fit" -> {
+                        mediaPlayer?.aspectRatio = null
+                        mediaPlayer?.scale = 0f
+                    }
+                    "16:9" -> {
+                        mediaPlayer?.aspectRatio = "16:9"
+                    }
+                    "4:3" -> {
+                        mediaPlayer?.aspectRatio = "4:3"
+                    }
+                    "Original" -> {
+                        mediaPlayer?.aspectRatio = null
+                        mediaPlayer?.scale = 1.0f
+                    }
+                    "Zoom" -> {
+                        mediaPlayer?.aspectRatio = null
+                        mediaPlayer?.scale = 1.3f
+                    }
+                }
                 Toast.makeText(this, "Aspect Ratio: ${resizeNames[resizeIndex]}", Toast.LENGTH_SHORT).show()
                 scheduleMetadataHide()
             }
@@ -295,7 +320,7 @@ class PlayerActivity : AppCompatActivity() {
             }
             updateAudioTrackButtonState()
             findViewById<View>(R.id.btnPlaylist).setOnClickListener {
-                Toast.makeText(this, "Playlist opened", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, "Playlist opened (${playlist?.size ?: 1} items)", Toast.LENGTH_SHORT).show()
                 scheduleMetadataHide()
             }
             findViewById<View>(R.id.btnCast).setOnClickListener {
@@ -303,7 +328,7 @@ class PlayerActivity : AppCompatActivity() {
                 scheduleMetadataHide()
             }
             findViewById<View>(R.id.btnScreenshot).setOnClickListener {
-                Toast.makeText(this, "Screenshot saved to Gallery", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, "Screenshot captured", Toast.LENGTH_SHORT).show()
                 scheduleMetadataHide()
             }
             findViewById<View>(R.id.btnRotate).setOnClickListener {
@@ -322,7 +347,7 @@ class PlayerActivity : AppCompatActivity() {
                 scheduleMetadataHide()
             }
             findViewById<View>(R.id.btnSettings).setOnClickListener {
-                val options = arrayOf("Select Audio Track", "Select Subtitles", "Audio Shift", "Playback Speed")
+                val options = arrayOf("Select Audio Track", "Select Subtitles", "Audio Shift", "Playback Speed", "Open in External Player")
                 android.app.AlertDialog.Builder(this)
                     .setTitle("Settings")
                     .setItems(options) { _, which ->
@@ -331,17 +356,32 @@ class PlayerActivity : AppCompatActivity() {
                             1 -> showSubtitleDialog()
                             2 -> showAudioShiftDialog()
                             3 -> findViewById<View>(R.id.btnSpeed).callOnClick()
+                            4 -> {
+                                currentVideo?.let { video ->
+                                    mediaPlayer?.pause()
+                                    TvPlayerLauncher.launchExternalPlayer(this, video, playlist?.let { ArrayList(it) }, currentIndex)
+                                }
+                            }
                         }
                     }
                     .show()
                 scheduleMetadataHide()
             }
-    
-            currentVideo = intent.getSerializableExtra("video") as? TvVideo
-            @Suppress("UNCHECKED_CAST")
-            playlist = intent.getSerializableExtra("playlist") as? ArrayList<TvVideo>
+
+            currentVideo = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+                intent.getSerializableExtra("video", TvVideo::class.java)
+            } else {
+                @Suppress("DEPRECATION")
+                intent.getSerializableExtra("video") as? TvVideo
+            }
+            @Suppress("UNCHECKED_CAST", "DEPRECATION")
+            playlist = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+                intent.getSerializableExtra("playlist", ArrayList::class.java) as? ArrayList<TvVideo>
+            } else {
+                intent.getSerializableExtra("playlist") as? ArrayList<TvVideo>
+            }
             currentIndex = intent.getIntExtra("currentIndex", 0)
-    
+
             if (currentVideo == null && intent.data != null) {
                 val uri = intent.data!!
                 val title = uri.lastPathSegment ?: "Media"
@@ -353,107 +393,241 @@ class PlayerActivity : AppCompatActivity() {
                     isLocal = true
                 )
             }
-    
+
             if (currentVideo == null) {
                 Toast.makeText(this, "No media provided", Toast.LENGTH_SHORT).show()
                 finish()
                 return
             }
-    
-            initializePlayer()
+
+            initializeVlcPlayer()
             setupFocusMemory()
-        } catch (e: Exception) {
-            val errString = "Player Crash! Cause: ${e.javaClass.simpleName}: ${e.message}\n${e.stackTraceToString()}"
-            android.util.Log.e("PlayerActivity", errString)
-            Toast.makeText(this, errString.take(150), Toast.LENGTH_LONG).show()
-            Toast.makeText(this, errString.take(150), Toast.LENGTH_LONG).show() // show twice to last longer
+        } catch (t: Throwable) {
+            val errString = "Internal player error: ${t.javaClass.simpleName}: ${t.message}"
+            android.util.Log.e("PlayerActivity", errString, t)
+            Toast.makeText(this, errString, Toast.LENGTH_LONG).show()
             finish()
         }
-
     }
-    
+
     private fun getVideoById(id: String): TvVideo? {
         return playlist?.find { it.id == id } ?: if (currentVideo?.id == id) currentVideo else null
     }
 
-    private fun initializePlayer() {
-        videoUrlString = currentVideo?.url
-        titleText.text = currentVideo?.title
-        
-        val renderersFactory = DefaultRenderersFactory(this)
-            .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_OFF)
-            .setEnableDecoderFallback(true)
+    private fun hasNext(): Boolean {
+        val list = playlist
+        return !list.isNullOrEmpty() && currentIndex + 1 < list.size
+    }
 
-        val trackSelector = androidx.media3.exoplayer.trackselection.DefaultTrackSelector(this).apply {
-            setParameters(
-                buildUponParameters()
-                    .setTunnelingEnabled(true)
-            )
+    private fun hasPrevious(): Boolean {
+        val list = playlist
+        return !list.isNullOrEmpty() && currentIndex - 1 >= 0
+    }
+
+    private fun playNext() {
+        val list = playlist
+        if (!list.isNullOrEmpty() && currentIndex + 1 < list.size) {
+            currentIndex++
+            isManualSkip = true
+            playVideoItem(list[currentIndex])
+        }
+    }
+
+    private fun playPrevious() {
+        val list = playlist
+        if (!list.isNullOrEmpty() && currentIndex - 1 >= 0) {
+            currentIndex--
+            isManualSkip = true
+            playVideoItem(list[currentIndex])
+        }
+    }
+
+    private fun initializeVlcPlayer() {
+        val options = ArrayList<String>().apply {
+            add("--network-caching=3000")
+            add("--rtsp-tcp")
+            add("--audio-time-stretch")
+        }
+        libVLC = LibVLC(this, options)
+        mediaPlayer = MediaPlayer(libVLC)
+        
+        // Attach views safely if not already attached (use single surface to prevent overlay conflicts)
+        if (mediaPlayer?.vlcVout?.areViewsAttached() != true) {
+            mediaPlayer?.attachViews(videoLayout, null, false, false)
         }
 
-        val audioAttributes = androidx.media3.common.AudioAttributes.Builder()
-            .setUsage(androidx.media3.common.C.USAGE_MEDIA)
-            .setContentType(androidx.media3.common.C.AUDIO_CONTENT_TYPE_MOVIE)
-            .build()
-
-        exoPlayer = ExoPlayer.Builder(this, renderersFactory)
-            .setTrackSelector(trackSelector)
-            .setAudioAttributes(audioAttributes, true)
-            .build()
-        playerView.player = exoPlayer
-        
-        val items = mutableListOf<MediaItem>()
-        if (playlist != null && playlist!!.isNotEmpty()) {
-            playlist!!.forEach { video ->
-                items.add(MediaItem.Builder()
-                    .setUri(Uri.parse(video.url))
-                    .setMediaId(video.id)
-                    .build())
+        mediaPlayer?.setEventListener { event ->
+            when (event.type) {
+                MediaPlayer.Event.Buffering -> {
+                    runOnUiThread {
+                        if (isFinishing || isDestroyed) return@runOnUiThread
+                        if (event.buffering < 100f) {
+                            loadingSpinner.visibility = View.VISIBLE
+                        } else {
+                            loadingSpinner.visibility = View.GONE
+                        }
+                    }
+                }
+                MediaPlayer.Event.Playing -> {
+                    runOnUiThread {
+                        if (isFinishing || isDestroyed) return@runOnUiThread
+                        loadingSpinner.visibility = View.GONE
+                        btnPlayPause.setImageResource(R.drawable.ic_pause_flat)
+                        if (pendingSeekPosition > 0L) {
+                            mediaPlayer?.time = pendingSeekPosition
+                            pendingSeekPosition = 0L
+                        }
+                        scheduleMetadataHide()
+                    }
+                }
+                MediaPlayer.Event.Paused -> {
+                    runOnUiThread {
+                        if (isFinishing || isDestroyed) return@runOnUiThread
+                        btnPlayPause.setImageResource(R.drawable.ic_play_flat)
+                        hideHandler.removeCallbacks(hideRunnable)
+                        showMetadataTemp()
+                    }
+                }
+                MediaPlayer.Event.Stopped -> {
+                    runOnUiThread {
+                        if (isFinishing || isDestroyed) return@runOnUiThread
+                        btnPlayPause.setImageResource(R.drawable.ic_play_flat)
+                    }
+                }
+                MediaPlayer.Event.EndReached -> {
+                    runOnUiThread {
+                        if (isFinishing || isDestroyed) return@runOnUiThread
+                        handleMediaEnded()
+                    }
+                }
+                MediaPlayer.Event.EncounteredError -> {
+                    runOnUiThread {
+                        if (isFinishing || isDestroyed) return@runOnUiThread
+                        loadingSpinner.visibility = View.GONE
+                        Toast.makeText(this@PlayerActivity, "Error playing video with VLC", Toast.LENGTH_SHORT).show()
+                    }
+                }
             }
-            exoPlayer?.setMediaItems(items, currentIndex, 0L)
+        }
+
+        setupRemoteController()
+
+        // Start playing the current video
+        val videoToPlay = if (!playlist.isNullOrEmpty() && currentIndex in playlist!!.indices) {
+            playlist!![currentIndex]
         } else {
-            currentVideo?.let {
-                exoPlayer?.setMediaItem(MediaItem.Builder()
-                    .setUri(Uri.parse(it.url))
-                    .setMediaId(it.id)
-                    .build())
-            }
+            currentVideo!!
         }
-        
-        exoPlayer?.prepare()
-        
+        playVideoItem(videoToPlay)
+
+        progressHandler.removeCallbacks(progressRunnable)
+        progressHandler.postDelayed(progressRunnable, 1000)
+
+        antiScreenSaverHandler.removeCallbacks(antiScreenSaverRunnable)
+        antiScreenSaverHandler.postDelayed(antiScreenSaverRunnable, 30000)
+    }
+
+    private fun playVideoItem(video: TvVideo, resumePosition: Long = 0L) {
+        try {
+            currentVideo = video
+            videoUrlString = video.url
+            titleText.text = video.title
+
+            loadingSpinner.visibility = View.VISIBLE
+
+            if (video.url.isBlank()) {
+                loadingSpinner.visibility = View.GONE
+                Toast.makeText(this, "Empty video URL", Toast.LENGTH_SHORT).show()
+                finish()
+                return
+            }
+
+            val media = if (video.url.startsWith("content://")) {
+                val uri = Uri.parse(video.url)
+                var fdMedia: Media? = null
+                try {
+                    val pfd = contentResolver.openFileDescriptor(uri, "r")
+                    if (pfd != null) {
+                        fdMedia = Media(libVLC, pfd.fileDescriptor)
+                    }
+                } catch (e: Exception) {
+                    android.util.Log.w("PlayerActivity", "Could not open FileDescriptor for content URI: $uri", e)
+                }
+                fdMedia ?: Media(libVLC, uri)
+            } else if (video.url.startsWith("/") || (!video.url.contains("://") && !video.url.startsWith("http"))) {
+                Media(libVLC, video.url)
+            } else {
+                Media(libVLC, Uri.parse(video.url))
+            }
+
+            try {
+                media.setHWDecoderEnabled(true, false)
+            } catch (e: Exception) {
+                android.util.Log.w("PlayerActivity", "Could not set HWDecoderEnabled", e)
+            }
+
+            mediaPlayer?.media = media
+            media.release()
+
+            val watchedPos = video.watchedPosition
+            val totDur = video.totalDuration
+            val isCompleted = totDur > 0L && watchedPos >= totDur - 5000L
+
+            if (resumePosition > 0L) {
+                pendingSeekPosition = resumePosition
+                mediaPlayer?.play()
+            } else if (watchedPos > 1000 && !isCompleted) {
+                showResumeDialog(video)
+            } else {
+                if (isCompleted) {
+                    pendingSeekPosition = 0L
+                }
+                mediaPlayer?.play()
+            }
+
+            val timeout = if (isManualSkip) 2000L else 5000L
+            showMetadataTemp(timeoutMs = timeout)
+            isManualSkip = false
+        } catch (t: Throwable) {
+            loadingSpinner.visibility = View.GONE
+            android.util.Log.e("PlayerActivity", "Failed to play video item: ${video.title}", t)
+            Toast.makeText(this, "Internal player error: ${t.localizedMessage ?: t.javaClass.simpleName}", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    private fun handleMediaEnded() {
+        val finalDuration = mediaPlayer?.length?.takeIf { it > 0 } ?: currentVideo?.totalDuration ?: 0L
+        currentVideo?.let { video ->
+            sendProgressUpdate(video.id, finalDuration, finalDuration)
+        }
+        if (hasNext()) {
+            playNext()
+        } else {
+            finish()
+        }
+    }
+
+    private fun setupRemoteController() {
         TvRemoteServer.playerController = object : TvRemoteServer.PlayerController {
-            override fun play() { Handler(Looper.getMainLooper()).post { exoPlayer?.play() } }
-            override fun pause() { Handler(Looper.getMainLooper()).post { exoPlayer?.pause() } }
-            override fun next() { Handler(Looper.getMainLooper()).post { if (exoPlayer?.hasNextMediaItem() == true) exoPlayer?.seekToNextMediaItem() } }
-            override fun prev() { Handler(Looper.getMainLooper()).post { if (exoPlayer?.hasPreviousMediaItem() == true) exoPlayer?.seekToPreviousMediaItem() } }
+            override fun play() { Handler(Looper.getMainLooper()).post { mediaPlayer?.play() } }
+            override fun pause() { Handler(Looper.getMainLooper()).post { mediaPlayer?.pause() } }
+            override fun next() { Handler(Looper.getMainLooper()).post { if (hasNext()) playNext() } }
+            override fun prev() { Handler(Looper.getMainLooper()).post { if (hasPrevious()) playPrevious() } }
             override fun playVideo(id: String) {
                 Handler(Looper.getMainLooper()).post {
                     var index = playlist?.indexOfFirst { it.id == id } ?: -1
                     if (index == -1) {
                         playlist = java.util.ArrayList(TvDataStore.playlist)
-                        val items = mutableListOf<MediaItem>()
-                        playlist!!.forEach { video ->
-                            items.add(MediaItem.Builder()
-                                .setUri(Uri.parse(video.url))
-                                .setMediaId(video.id)
-                                .build())
-                        }
                         index = playlist?.indexOfFirst { it.id == id } ?: -1
-                        if (index != -1) {
-                            exoPlayer?.setMediaItems(items, index, 0L)
-                            exoPlayer?.prepare()
-                            return@post
-                        }
                     }
-                    if (index != -1) {
-                        exoPlayer?.seekToDefaultPosition(index)
-                        exoPlayer?.prepare()
+                    if (index != -1 && !playlist.isNullOrEmpty()) {
+                        currentIndex = index
+                        playVideoItem(playlist!![index])
                     }
                 }
             }
             override fun seekTo(positionMs: Long) {
-                Handler(Looper.getMainLooper()).post { exoPlayer?.seekTo(positionMs) }
+                Handler(Looper.getMainLooper()).post { mediaPlayer?.time = positionMs }
             }
             override fun getState(): JSONObject {
                 val state = JSONObject()
@@ -470,22 +644,38 @@ class PlayerActivity : AppCompatActivity() {
                 var currentSpeed = 1.0f
                 var needsAudioShift = false
                 var currentAudioShift = 0L
-                val latch = java.util.concurrent.CountDownLatch(1)
-                Handler(Looper.getMainLooper()).post {
-                    playing = exoPlayer?.isPlaying ?: false
-                    position = exoPlayer?.currentPosition ?: 0L
-                    duration = exoPlayer?.duration ?: 0L
+                if (Looper.myLooper() == Looper.getMainLooper()) {
+                    playing = mediaPlayer?.isPlaying ?: false
+                    position = mediaPlayer?.time ?: 0L
+                    duration = mediaPlayer?.length ?: 0L
                     needsResume = isWaitingForResume
                     resumePos = currentVideo?.watchedPosition ?: 0L
                     locked = isLocked
-                    muted = exoPlayer?.volume == 0f
+                    muted = (mediaPlayer?.volume ?: 100) == 0
                     needsSpeed = isWaitingForSpeedChoice
-                    currentSpeed = exoPlayer?.playbackParameters?.speed ?: 1.0f
+                    currentSpeed = mediaPlayer?.rate ?: 1.0f
                     needsAudioShift = isWaitingForAudioShiftChoice
                     currentAudioShift = audioShiftMs
-                    latch.countDown()
+                } else {
+                    val latch = java.util.concurrent.CountDownLatch(1)
+                    Handler(Looper.getMainLooper()).post {
+                        try {
+                            playing = mediaPlayer?.isPlaying ?: false
+                            position = mediaPlayer?.time ?: 0L
+                            duration = mediaPlayer?.length ?: 0L
+                            needsResume = isWaitingForResume
+                            resumePos = currentVideo?.watchedPosition ?: 0L
+                            locked = isLocked
+                            muted = (mediaPlayer?.volume ?: 100) == 0
+                            needsSpeed = isWaitingForSpeedChoice
+                            currentSpeed = mediaPlayer?.rate ?: 1.0f
+                            needsAudioShift = isWaitingForAudioShiftChoice
+                            currentAudioShift = audioShiftMs
+                        } catch (e: Exception) {}
+                        latch.countDown()
+                    }
+                    try { latch.await(300, java.util.concurrent.TimeUnit.MILLISECONDS) } catch (e: Exception) {}
                 }
-                try { latch.await(1, java.util.concurrent.TimeUnit.SECONDS) } catch (e: Exception) {}
                 state.put("isPlaying", playing)
                 state.put("position", position)
                 state.put("duration", duration)
@@ -527,7 +717,7 @@ class PlayerActivity : AppCompatActivity() {
                             isContinuousSyncEnabled = !isContinuousSyncEnabled
                             val msg = if (isContinuousSyncEnabled) "Continuous Sync Enabled" else "Continuous Sync Disabled"
                             Toast.makeText(this@PlayerActivity, msg, Toast.LENGTH_SHORT).show()
-                            
+
                             val btn = audioShiftDialog?.findViewById<android.widget.Button>(R.id.btnToggleSync)
                             if (btn != null) {
                                 btn.text = if (isContinuousSyncEnabled) "Stop Syncing" else "Start Syncing"
@@ -566,103 +756,6 @@ class PlayerActivity : AppCompatActivity() {
                 }
             }
         }
-        
-        val watchedPos = currentVideo!!.watchedPosition
-        val totDur = currentVideo!!.totalDuration
-        val isCompleted = totDur > 0L && watchedPos >= totDur - 5000L
-        if (watchedPos > 1000 && !isCompleted) {
-            exoPlayer?.playWhenReady = false
-            showResumeDialog(currentVideo!!)
-        } else {
-            if (isCompleted) {
-                exoPlayer?.seekTo(0L)
-            }
-            exoPlayer?.playWhenReady = true
-        }
-
-        showMetadataTemp()
-
-        exoPlayer?.addListener(object : Player.Listener {
-            override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
-                super.onMediaItemTransition(mediaItem, reason)
-                mediaItem?.mediaId?.let { id ->
-                    getVideoById(id)?.let { video ->
-                        currentVideo = video
-                        titleText.text = video.title
-                        videoUrlString = video.url
-                        
-                        val watched = video.watchedPosition
-                        val total = video.totalDuration
-                        val completed = total > 0L && watched >= total - 5000L
-                        val shouldShowResume = watched > 1000 && !completed
-
-                        if (reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO) {
-                            if (shouldShowResume) {
-                                showMetadataTemp()
-                            }
-                        } else {
-                            val timeout = if (isManualSkip) 2000L else 5000L
-                            showMetadataTemp(timeoutMs = timeout)
-                        }
-                        isManualSkip = false
-                        
-                        if ((reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO || 
-                             reason == Player.MEDIA_ITEM_TRANSITION_REASON_SEEK || 
-                             reason == Player.MEDIA_ITEM_TRANSITION_REASON_PLAYLIST_CHANGED)) {
-                            
-                            exoPlayer?.playWhenReady = false
-                            isWaitingForResume = false
-                            if (resumeDialog?.isShowing == true) {
-                                resumeDialog?.dismiss()
-                            }
-                            
-                            if (shouldShowResume) {
-                                showResumeDialog(video)
-                            } else {
-                                if (completed) {
-                                    exoPlayer?.seekTo(0L)
-                                }
-                                exoPlayer?.playWhenReady = true
-                            }
-                        }
-                    }
-                }
-            }
-            
-            override fun onPlaybackStateChanged(playbackState: Int) {
-                if (playbackState == Player.STATE_BUFFERING) {
-                    loadingSpinner.visibility = View.VISIBLE
-                } else {
-                    loadingSpinner.visibility = View.GONE
-                }
-                
-                if (playbackState == Player.STATE_ENDED) {
-                    val finalDuration = exoPlayer?.duration?.takeIf { it > 0 } ?: currentVideo?.totalDuration ?: 0L
-                    currentVideo?.let { video ->
-                        sendProgressUpdate(video.id, finalDuration, finalDuration)
-                    }
-                    if (exoPlayer?.hasNextMediaItem() == false) {
-                        finish()
-                    }
-                }
-            }
-            override fun onIsPlayingChanged(isPlaying: Boolean) {
-                if (isPlaying) {
-                    btnPlayPause.setImageResource(R.drawable.ic_pause_flat)
-                    scheduleMetadataHide()
-                } else {
-                    btnPlayPause.setImageResource(R.drawable.ic_play_flat)
-                    hideHandler.removeCallbacks(hideRunnable)
-                    showMetadataTemp()
-                }
-            }
-        })
-
-        progressHandler.removeCallbacks(progressRunnable)
-        progressHandler.postDelayed(progressRunnable, 1000)
-
-        antiScreenSaverHandler.removeCallbacks(antiScreenSaverRunnable)
-        antiScreenSaverHandler.postDelayed(antiScreenSaverRunnable, 30000)
     }
 
     private var isWaitingForResume = false
@@ -675,12 +768,12 @@ class PlayerActivity : AppCompatActivity() {
             resumeDialog?.dismiss()
         }
         if (choice == "continue") {
-            exoPlayer?.seekTo(position)
+            pendingSeekPosition = position
+            mediaPlayer?.play()
         } else {
-            exoPlayer?.seekTo(0)
+            pendingSeekPosition = 0L
+            mediaPlayer?.play()
         }
-        exoPlayer?.playWhenReady = true
-        exoPlayer?.play()
     }
 
     private fun showAudioShiftDialog() {
@@ -696,7 +789,7 @@ class PlayerActivity : AppCompatActivity() {
             saveAudioShift(shift)
             textValue.text = String.format("%.2fs", shift / 1000f)
         }
-        
+
         btnToggleSync.text = if (isContinuousSyncEnabled) "Stop Syncing" else "Start Syncing"
         btnToggleSync.setOnClickListener {
             isContinuousSyncEnabled = !isContinuousSyncEnabled
@@ -757,7 +850,6 @@ class PlayerActivity : AppCompatActivity() {
         }
     }
 
-
     fun handleSpeedChoice(speed: Float?) {
         isWaitingForSpeedChoice = false
         if (speedDialog?.isShowing == true) {
@@ -765,7 +857,7 @@ class PlayerActivity : AppCompatActivity() {
         }
         speedDialog = null
         if (speed != null) {
-            exoPlayer?.setPlaybackSpeed(speed)
+            mediaPlayer?.rate = speed
             Toast.makeText(this, "Speed: ${speed}x", Toast.LENGTH_SHORT).show()
         }
         scheduleMetadataHide()
@@ -788,8 +880,8 @@ class PlayerActivity : AppCompatActivity() {
         isWaitingForResume = true
 
         val dialogView = layoutInflater.inflate(R.layout.tv_resume_dialog, null)
-        val titleText = dialogView.findViewById<android.widget.TextView>(R.id.dialog_title)
-        val messageText = dialogView.findViewById<android.widget.TextView>(R.id.dialog_message)
+        val titleText = dialogView.findViewById<TextView>(R.id.dialog_title)
+        val messageText = dialogView.findViewById<TextView>(R.id.dialog_message)
         val btnContinue = dialogView.findViewById<android.widget.Button>(R.id.btn_continue)
         val btnStartOver = dialogView.findViewById<android.widget.Button>(R.id.btn_start_over)
 
@@ -800,7 +892,7 @@ class PlayerActivity : AppCompatActivity() {
         builder.setView(dialogView)
         builder.setCancelable(false)
         resumeDialog = builder.create()
-        
+
         resumeDialog?.window?.setBackgroundDrawableResource(android.R.color.transparent)
 
         btnContinue.setOnClickListener {
@@ -855,23 +947,23 @@ class PlayerActivity : AppCompatActivity() {
             it.watchedPosition = position
             it.totalDuration = duration
         }
-        
+
         val videoUrl = videoUrlString
         if (videoUrl.isNullOrEmpty() || !videoUrl.startsWith("http")) return
-        
+
         val uri = Uri.parse(videoUrl)
         val scheme = uri.scheme ?: "http"
         val host = uri.host ?: "127.0.0.1"
         val port = uri.port
         val baseUrl = if (port != -1) "$scheme://$host:$port" else "$scheme://$host"
-        
+
         val updateUrl = "$baseUrl/update_progress?id=$videoId&position=$position&duration=$duration"
-        
+
         val client = okhttp3.OkHttpClient()
         val request = okhttp3.Request.Builder()
             .url(updateUrl)
             .build()
-            
+
         client.newCall(request).enqueue(object : okhttp3.Callback {
             override fun onFailure(call: okhttp3.Call, e: java.io.IOException) {}
             override fun onResponse(call: okhttp3.Call, response: okhttp3.Response) { response.close() }
@@ -879,10 +971,9 @@ class PlayerActivity : AppCompatActivity() {
     }
 
     private fun saveFinalProgress() {
-        exoPlayer?.let { player ->
-            if (player.playbackState == Player.STATE_ENDED) return
-            val currentPos = player.currentPosition
-            val duration = player.duration
+        mediaPlayer?.let { player ->
+            val currentPos = player.time
+            val duration = player.length
             if (duration > 0 && currentPos >= 0 && currentPos < duration) {
                 currentVideo?.let { video ->
                     video.watchedPosition = currentPos
@@ -896,21 +987,21 @@ class PlayerActivity : AppCompatActivity() {
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         if (event.action == KeyEvent.ACTION_DOWN) {
             if (!isLocked && event.keyCode == KeyEvent.KEYCODE_CHANNEL_UP) {
-                if (exoPlayer?.hasNextMediaItem() == true) {
+                if (hasNext()) {
                     isManualSkip = true
-                    exoPlayer?.seekToNextMediaItem()
+                    playNext()
                 }
                 showMetadataTemp(timeoutMs = 2000L)
                 return true
             } else if (!isLocked && event.keyCode == KeyEvent.KEYCODE_CHANNEL_DOWN) {
-                if (exoPlayer?.hasPreviousMediaItem() == true) {
+                if (hasPrevious()) {
                     isManualSkip = true
-                    exoPlayer?.seekToPreviousMediaItem()
+                    playPrevious()
                 }
                 showMetadataTemp(timeoutMs = 2000L)
                 return true
             }
-            
+
             // Standard user interaction (not skipping) resets to 5s timeout
             currentTimeoutMs = 5000L
 
@@ -928,7 +1019,7 @@ class PlayerActivity : AppCompatActivity() {
                     showMetadataTemp(false)
                     return true
                 }
-                
+
                 // Allow clicking btnLock to unlock
                 if (event.keyCode == KeyEvent.KEYCODE_DPAD_CENTER || event.keyCode == KeyEvent.KEYCODE_ENTER) {
                     if (currentFocus?.id == R.id.btnLock) {
@@ -936,7 +1027,7 @@ class PlayerActivity : AppCompatActivity() {
                         return super.dispatchKeyEvent(event)
                     }
                 }
-                
+
                 // Prevent all other navigation
                 scheduleMetadataHide()
                 return true
@@ -958,9 +1049,6 @@ class PlayerActivity : AppCompatActivity() {
             }
 
             val currentFocusView = currentFocus
-            
-            
-            
 
             if (event.keyCode == KeyEvent.KEYCODE_DPAD_DOWN) {
                 if (currentFocusView == timeBar) {
@@ -1005,7 +1093,7 @@ class PlayerActivity : AppCompatActivity() {
                     }
                 }
             } else if ((event.keyCode == KeyEvent.KEYCODE_DPAD_CENTER || event.keyCode == KeyEvent.KEYCODE_ENTER) && currentFocusView == timeBar) {
-                exoPlayer?.let {
+                mediaPlayer?.let {
                     if (it.isPlaying) it.pause() else it.play()
                 }
                 scheduleMetadataHide()
@@ -1024,17 +1112,11 @@ class PlayerActivity : AppCompatActivity() {
     }
 
     private fun setupFocusMemory() {
-        
-        
-        
-
-        // Default initial focus values
         lastFocusedTopBarView = findViewById(R.id.btnCast)
         lastFocusedMiddleRightView = findViewById(R.id.btnAudioTrack)
         lastFocusedControlsPillView = btnPlayPause
         lastFocusedUpperView = lastFocusedMiddleRightView
 
-        // Top Bar focus tracking
         findViewById<android.view.ViewGroup>(R.id.topBar)?.let { group ->
             for (i in 0 until group.childCount) {
                 val child = group.getChildAt(i)
@@ -1047,7 +1129,6 @@ class PlayerActivity : AppCompatActivity() {
             }
         }
 
-        // Middle Right Bar focus tracking
         findViewById<android.view.ViewGroup>(R.id.middleRightBar)?.let { group ->
             for (i in 0 until group.childCount) {
                 val child = group.getChildAt(i)
@@ -1060,7 +1141,6 @@ class PlayerActivity : AppCompatActivity() {
             }
         }
 
-        // Controls Pill focus tracking
         (btnPlayPause.parent as? android.view.ViewGroup)?.let { group ->
             for (i in 0 until group.childCount) {
                 val child = group.getChildAt(i)
@@ -1100,94 +1180,114 @@ class PlayerActivity : AppCompatActivity() {
         hideHandler.postDelayed(hideRunnable, currentTimeoutMs)
     }
 
+    override fun onStart() {
+        super.onStart()
+        try {
+            if (mediaPlayer?.vlcVout?.areViewsAttached() != true) {
+                mediaPlayer?.attachViews(videoLayout, null, false, false)
+            }
+        } catch (t: Throwable) {
+            android.util.Log.e("PlayerActivity", "Error attaching views in onStart", t)
+        }
+    }
+
+    override fun onStop() {
+        super.onStop()
+        try {
+            mediaPlayer?.stop()
+            if (mediaPlayer?.vlcVout?.areViewsAttached() == true) {
+                mediaPlayer?.detachViews()
+            }
+        } catch (t: Throwable) {
+            android.util.Log.e("PlayerActivity", "Error in onStop", t)
+        }
+    }
+
+    override fun onPause() {
+        super.onPause()
+        try {
+            mediaPlayer?.pause()
+            saveFinalProgress()
+        } catch (t: Throwable) {
+            android.util.Log.e("PlayerActivity", "Error in onPause", t)
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        try {
+            currentVideo?.let { video ->
+                if (video.watchedPosition <= 1000 || (mediaPlayer?.time ?: 0L) > 0L) {
+                    mediaPlayer?.play()
+                }
+            }
+        } catch (t: Throwable) {
+            android.util.Log.e("PlayerActivity", "Error in onResume", t)
+        }
+    }
+
     override fun onDestroy() {
         super.onDestroy()
         TvRemoteServer.playerController = null
         hideHandler.removeCallbacks(hideRunnable)
         progressHandler.removeCallbacks(progressRunnable)
         antiScreenSaverHandler.removeCallbacks(antiScreenSaverRunnable)
-        saveFinalProgress()
-        exoPlayer?.release()
-        exoPlayer = null
-    }
-
-    override fun onPause() {
-        super.onPause()
-        exoPlayer?.pause()
-        saveFinalProgress()
-    }
-
-    override fun onResume() {
-        super.onResume()
-        currentVideo?.let { video ->
-            if (video.watchedPosition <= 1000 || (exoPlayer?.currentPosition ?: 0L) > 0L) {
-                exoPlayer?.play()
+        try {
+            saveFinalProgress()
+            mediaPlayer?.stop()
+            if (mediaPlayer?.vlcVout?.areViewsAttached() == true) {
+                mediaPlayer?.detachViews()
             }
+            mediaPlayer?.release()
+            mediaPlayer = null
+            libVLC?.release()
+            libVLC = null
+        } catch (t: Throwable) {
+            android.util.Log.e("PlayerActivity", "Error releasing player in onDestroy", t)
         }
     }
 
     private fun showAudioTrackDialog() {
-        exoPlayer?.let { player ->
-            val tracks = player.currentTracks
-            val audioGroups = mutableListOf<Pair<androidx.media3.common.Tracks.Group, Int>>()
-            val trackNames = mutableListOf<String>()
-
-            for (group in tracks.groups) {
-                if (group.type == androidx.media3.common.C.TRACK_TYPE_AUDIO) {
-                    for (i in 0 until group.length) {
-                        val format = group.getTrackFormat(i)
-                        val lang = format.language ?: "Und"
-                        val label = format.label ?: format.sampleMimeType ?: "Audio track"
-                        val isSelected = group.isTrackSelected(i)
-                        audioGroups.add(Pair(group, i))
-                        trackNames.add("$label ($lang)${if (isSelected) " [Active]" else ""}")
-                    }
-                }
-            }
-
-            if (trackNames.isEmpty()) {
+        mediaPlayer?.let { player ->
+            val tracks = player.audioTracks
+            if (tracks.isNullOrEmpty()) {
                 Toast.makeText(this, "No audio tracks available", Toast.LENGTH_SHORT).show()
                 return
             }
 
+            val currentTrackId = player.audioTrack
+            val trackNames = tracks.map { track ->
+                val activeStr = if (track.id == currentTrackId) " [Active]" else ""
+                "${track.name}$activeStr"
+            }.toTypedArray()
+
             android.app.AlertDialog.Builder(this)
                 .setTitle("Select Audio Track")
-                .setItems(trackNames.toTypedArray()) { _, which ->
-                    val (group, trackIndex) = audioGroups[which]
-                    val mappedTrackInfo = player.trackSelectionParameters
-                    val newParameters = mappedTrackInfo.buildUpon()
-                        .setOverrideForType(
-                            androidx.media3.common.TrackSelectionOverride(
-                                group.mediaTrackGroup,
-                                listOf(trackIndex)
-                            )
-                        )
-                        .build()
-                    player.trackSelectionParameters = newParameters
-                    Toast.makeText(this, "Selected: ${trackNames[which]}", Toast.LENGTH_SHORT).show()
+                .setItems(trackNames) { _, which ->
+                    val selectedTrack = tracks[which]
+                    player.audioTrack = selectedTrack.id
+                    Toast.makeText(this, "Selected: ${selectedTrack.name}", Toast.LENGTH_SHORT).show()
                 }
                 .show()
         }
     }
 
     private fun showSubtitleDialog() {
-        exoPlayer?.let { player ->
-            val tracks = player.currentTracks
-            val subGroups = mutableListOf<Pair<androidx.media3.common.Tracks.Group?, Int>>()
+        mediaPlayer?.let { player ->
+            val tracks = player.spuTracks
+            val currentTrackId = player.spuTrack
+            val trackIds = mutableListOf<Int>()
             val trackNames = mutableListOf<String>()
 
-            trackNames.add("Off")
-            subGroups.add(Pair(null, -1))
+            trackNames.add("Off${if (currentTrackId == -1) " [Active]" else ""}")
+            trackIds.add(-1)
 
-            for (group in tracks.groups) {
-                if (group.type == androidx.media3.common.C.TRACK_TYPE_TEXT) {
-                    for (i in 0 until group.length) {
-                        val format = group.getTrackFormat(i)
-                        val lang = format.language ?: "Und"
-                        val label = format.label ?: format.sampleMimeType ?: "Subtitle"
-                        val isSelected = group.isTrackSelected(i)
-                        subGroups.add(Pair(group, i))
-                        trackNames.add("$label ($lang)${if (isSelected) " [Active]" else ""}")
+            if (!tracks.isNullOrEmpty()) {
+                for (track in tracks) {
+                    if (track.id != -1) {
+                        trackIds.add(track.id)
+                        val activeStr = if (track.id == currentTrackId) " [Active]" else ""
+                        trackNames.add("${track.name}$activeStr")
                     }
                 }
             }
@@ -1195,25 +1295,11 @@ class PlayerActivity : AppCompatActivity() {
             android.app.AlertDialog.Builder(this)
                 .setTitle("Select Subtitles")
                 .setItems(trackNames.toTypedArray()) { _, which ->
-                    val (group, trackIndex) = subGroups[which]
-                    val mappedTrackInfo = player.trackSelectionParameters
-                    val builder = mappedTrackInfo.buildUpon()
-                    if (group == null || trackIndex == -1) {
-                        builder.setTrackTypeDisabled(androidx.media3.common.C.TRACK_TYPE_TEXT, true)
-                    } else {
-                        builder.setTrackTypeDisabled(androidx.media3.common.C.TRACK_TYPE_TEXT, false)
-                            .setOverrideForType(
-                                androidx.media3.common.TrackSelectionOverride(
-                                    group.mediaTrackGroup,
-                                    listOf(trackIndex)
-                                )
-                            )
-                    }
-                    player.trackSelectionParameters = builder.build()
+                    val selectedId = trackIds[which]
+                    player.spuTrack = selectedId
                     Toast.makeText(this, "Selected Subtitles: ${trackNames[which]}", Toast.LENGTH_SHORT).show()
                 }
                 .show()
         }
     }
 }
-
