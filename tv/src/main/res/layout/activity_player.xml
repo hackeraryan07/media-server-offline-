@@ -6,12 +6,11 @@
 	android:layout_height="match_parent"
 	android:background="#000000">
 
-	<androidx.media3.ui.PlayerView
+	<org.videolan.libvlc.util.VLCVideoLayout
 		android:id="@+id/internalVideoView"
 		android:layout_width="match_parent"
 		android:layout_height="match_parent"
-		android:layout_centerInParent="true"
-        app:use_controller="false" />
+		android:layout_centerInParent="true" />
 
 	<ProgressBar
 		android:id="@+id/playerLoadingSpinner"
@@ -257,13 +256,13 @@
 
 			</LinearLayout>
 
-			<LinearLayout
+			<com.example.tv.LiquidGlassLinearLayout
+				android:id="@+id/controlsPillContainer"
 				android:layout_width="wrap_content"
 				android:layout_height="56dp"
 				android:layout_gravity="center_horizontal"
 				android:orientation="horizontal"
 				android:gravity="center_vertical"
-				android:background="@drawable/player_controls_pill_bg"
 				android:paddingStart="12dp"
 				android:paddingEnd="12dp"
 				android:elevation="8dp">
@@ -351,7 +350,7 @@
 					android:layout_marginStart="4dp"
 					android:src="@drawable/ic_screen_fit"/>
 
-			</LinearLayout>
+			</com.example.tv.LiquidGlassLinearLayout>
 
 		</LinearLayout>
 

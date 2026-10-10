@@ -148,19 +148,6 @@ fun ServerDashboardScreen() {
         }
     }
 
-    val pickMediaLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.PickVisualMedia()
-    ) { uri: Uri? ->
-        if (uri != null) {
-            coroutineScope.launch(Dispatchers.IO) {
-                val name = getFileName(context, uri) ?: "Selected Mobile Stream"
-                val size = getFileSize(context, uri)
-                val randomId = "local_" + System.currentTimeMillis()
-                ServerManager.localVideoServer?.addLocalVideo(randomId, name, uri, size)
-            }
-        }
-    }
-
     Scaffold(
         modifier = Modifier.fillMaxSize(),
         topBar = {
@@ -267,21 +254,6 @@ fun ServerDashboardScreen() {
                         selectedTextColor = MaterialTheme.colorScheme.primary,
                         unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant
                     )
-                )
-            }
-        },
-        floatingActionButton = {
-            if (currentPage == 1) {
-                ExtendedFloatingActionButton(
-                    onClick = {
-                        pickMediaLauncher.launch(
-                            PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly)
-                        )
-                    },
-                    icon = { Icon(Icons.Default.Add, contentDescription = "Add video") },
-                    text = { Text("Add Video") },
-                    containerColor = MaterialTheme.colorScheme.primaryContainer,
-                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer
                 )
             }
         }
