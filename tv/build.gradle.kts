@@ -15,7 +15,7 @@ android {
     versionName = "1.0"
     resourceConfigurations += setOf("en")
     ndk {
-      abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64")
+      abiFilters += listOf("armeabi-v7a")
     }
   }
 
@@ -62,7 +62,11 @@ android {
         "META-INF/*.version",
         "META-INF/LICENSE*",
         "META-INF/NOTICE*",
-        "DebugProbesKt.bin"
+        "DebugProbesKt.bin",
+        "assets/hrtfs/**",
+        "assets/lua/**",
+        "hrtfs/**",
+        "lua/**"
       )
     }
   }

@@ -109,10 +109,10 @@ jobs:
             size_mb=$(awk "BEGIN {printf \"%.2f\", $size_kb/1024}")
             echo "$apk size: ${size_mb} MB (${size_kb} KB)"
             # Mobile and RemoteAudio modules are lightweight (<10MB).
-            # TV client includes native LibVLC multimedia engine with universal codecs (<100MB).
+            # TV client includes native LibVLC multimedia engine with universal codecs (optimized under 25MB).
             max_kb=10240
             if [[ "$apk" == *"tv"* ]]; then
-              max_kb=102400
+              max_kb=25600
             fi
             if [ "$size_kb" -gt "$max_kb" ]; then
               echo "ERROR: $apk is ${size_mb} MB which exceeds the limit (${max_kb} KB)!"
