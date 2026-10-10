@@ -1,0 +1,6 @@
+{
+  "summary":  "Implementation plan to provide users with an option to choose between the internal (LibVLC) video player and an external video player in the Android TV client. Includes setting a default player preference in TV Settings (Internal, External, or Always Ask), handling playback dispatching from browse and search screens via system intent chooser, and offering an 'Open in External Player' action within the player controls settings menu.",
+  "updatedAt":  "2026-10-10T12:07:01.706888700Z",
+  "requestFeedback":  true,
+  "userFacing":  true
+}

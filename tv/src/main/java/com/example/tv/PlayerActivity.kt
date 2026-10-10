@@ -347,7 +347,7 @@ class PlayerActivity : AppCompatActivity() {
                 scheduleMetadataHide()
             }
             findViewById<View>(R.id.btnSettings).setOnClickListener {
-                val options = arrayOf("Select Audio Track", "Select Subtitles", "Audio Shift", "Playback Speed")
+                val options = arrayOf("Select Audio Track", "Select Subtitles", "Audio Shift", "Playback Speed", "Open in External Player")
                 android.app.AlertDialog.Builder(this)
                     .setTitle("Settings")
                     .setItems(options) { _, which ->
@@ -356,6 +356,12 @@ class PlayerActivity : AppCompatActivity() {
                             1 -> showSubtitleDialog()
                             2 -> showAudioShiftDialog()
                             3 -> findViewById<View>(R.id.btnSpeed).callOnClick()
+                            4 -> {
+                                currentVideo?.let { video ->
+                                    mediaPlayer?.pause()
+                                    TvPlayerLauncher.launchExternalPlayer(this, video, playlist?.let { ArrayList(it) }, currentIndex)
+                                }
+                            }
                         }
                     }
                     .show()
