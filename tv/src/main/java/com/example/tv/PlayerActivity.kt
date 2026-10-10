@@ -473,65 +473,85 @@ class PlayerActivity : AppCompatActivity() {
         }
     }
 
-    private fun initializeVlcPlayer() {
+    private fun createLibVlcInstance(): LibVLC {
         val appPrefs = getSharedPreferences("app_settings", Context.MODE_PRIVATE)
         val qualityMode = appPrefs.getString("video_quality_mode", "peak") ?: "peak"
 
-        val options = ArrayList<String>().apply {
-            // General streaming & stability options
+        // Tier 1: Peak Quality with safe LibVLC Android core options
+        val qualityOptions = ArrayList<String>().apply {
+            add("--audio-time-stretch")
             add("--network-caching=3000")
             add("--file-caching=2000")
             add("--live-caching=2000")
-            add("--sout-mux-caching=2000")
             add("--rtsp-tcp")
-            add("--audio-time-stretch")
-            add("--clock-jitter=0")
-
             if (qualityMode == "peak") {
-                // Peak Quality Profile:
-                // 1. Force 32-bit RGBA color format (RV32) instead of 16-bit RGB 565 (eliminates color banding and washed-out colors)
-                add("--android-display-chroma=RV32")
-
-                // 2. Direct hardware rendering pipeline via MediaCodec NDK/JNI direct-to-surface
-                add("--vout=android-display")
-                add("--codec=mediacodec_ndk,mediacodec_jni,all")
-                add("--mediacodec")
-                add("--mediacodec-dr")
-                add("--mediacodec-audio")
-
-                // 3. Never skip deblocking loop filter: preserves full macroblock edge filtering for crisp, smooth detail
-                add("--avcodec-skiploopfilter=0")
-
-                // 4. Never drop or skip frames: full framerate preservation and temporal resolution
-                add("--avcodec-skip-frame=0")
-                add("--no-skip-frames")
-                add("--no-drop-late-frames")
-
-                // 5. Maximum post-processing quality & Bicubic texture scaling for 1080p / 4K displays
-                add("--postproc-q=6")
-                add("--sws-mode=2")
-                add("--sws-scaler=bicubic")
-
-                // 6. Automatic deinterlacing for 1080i/480i video sources
-                add("--deinterlace=1")
-                add("--deinterlace-mode=auto")
+                // -1 = Never skip loop filter deblocking, keeping full macroblock sharpness
+                add("--avcodec-skiploopfilter")
+                add("-1")
+                // 0 = Never skip frames
+                add("--avcodec-skip-frame")
+                add("0")
+                // 0 = Full precision IDCT
+                add("--avcodec-skip-idct")
+                add("0")
             } else if (qualityMode == "balanced") {
-                add("--android-display-chroma=RV32")
-                add("--vout=android-display")
-                add("--codec=mediacodec_ndk,mediacodec_jni,all")
-                add("--mediacodec")
-                add("--mediacodec-dr")
-                add("--avcodec-skiploopfilter=0")
+                add("--avcodec-skiploopfilter")
+                add("0")
             }
         }
-        libVLC = LibVLC(this, options)
+
+        try {
+            return LibVLC(this, qualityOptions)
+        } catch (t: Throwable) {
+            android.util.Log.w("PlayerActivity", "LibVLC init failed with quality options: ${t.message}", t)
+        }
+
+        // Tier 2: Safe basic options fallback
+        try {
+            val basicOptions = arrayListOf("--network-caching=3000", "--rtsp-tcp")
+            return LibVLC(this, basicOptions)
+        } catch (t: Throwable) {
+            android.util.Log.w("PlayerActivity", "LibVLC init failed with basic options: ${t.message}", t)
+        }
+
+        // Tier 3: Zero-arguments default constructor
+        return LibVLC(this)
+    }
+
+    private fun initializeVlcPlayer(initialResumePosition: Long = 0L) {
+        if (isFinishing || isDestroyed) return
+
+        try {
+            if (mediaPlayer != null) {
+                try {
+                    mediaPlayer?.stop()
+                    if (mediaPlayer?.vlcVout?.areViewsAttached() == true) {
+                        mediaPlayer?.detachViews()
+                    }
+                    mediaPlayer?.release()
+                } catch (e: Exception) {}
+                mediaPlayer = null
+            }
+            if (libVLC != null) {
+                try {
+                    libVLC?.release()
+                } catch (e: Exception) {}
+                libVLC = null
+            }
+        } catch (e: Exception) {}
+
+        libVLC = createLibVlcInstance()
         mediaPlayer = MediaPlayer(libVLC)
         mediaPlayer?.aspectRatio = null
         mediaPlayer?.scale = 0f
         
         // Attach views safely if not already attached (use single surface to prevent overlay conflicts)
-        if (mediaPlayer?.vlcVout?.areViewsAttached() != true) {
-            mediaPlayer?.attachViews(videoLayout, null, false, false)
+        try {
+            if (mediaPlayer?.vlcVout?.areViewsAttached() != true) {
+                mediaPlayer?.attachViews(videoLayout, null, false, false)
+            }
+        } catch (t: Throwable) {
+            android.util.Log.e("PlayerActivity", "Error attaching views", t)
         }
 
         mediaPlayer?.setEventListener { event ->
@@ -594,9 +614,11 @@ class PlayerActivity : AppCompatActivity() {
         val videoToPlay = if (!playlist.isNullOrEmpty() && currentIndex in playlist!!.indices) {
             playlist!![currentIndex]
         } else {
-            currentVideo!!
+            currentVideo
         }
-        playVideoItem(videoToPlay)
+        if (videoToPlay != null) {
+            playVideoItem(videoToPlay, resumePosition = initialResumePosition)
+        }
 
         progressHandler.removeCallbacks(progressRunnable)
         progressHandler.postDelayed(progressRunnable, 1000)
@@ -655,13 +677,8 @@ class PlayerActivity : AppCompatActivity() {
                     addOption(":no-mediacodec-dr=0")
                     addOption(":mediacodec-audio=1")
                     addOption(":avcodec-hw=any")
-                    addOption(":avcodec-skiploopfilter=0")
+                    addOption(":avcodec-skiploopfilter=-1")
                     addOption(":avcodec-skip-frame=0")
-                    addOption(":no-skip-frames")
-                    addOption(":android-display-chroma=RV32")
-                    addOption(":vout=android-display")
-                    addOption(":sws-mode=2")
-                    addOption(":postproc-q=6")
                     addOption(":network-caching=3000")
                     addOption(":file-caching=2000")
                     addOption(":live-caching=2000")
@@ -670,8 +687,6 @@ class PlayerActivity : AppCompatActivity() {
                 media.apply {
                     addOption(":codec=mediacodec_ndk,mediacodec_jni,all")
                     addOption(":mediacodec-dr=1")
-                    addOption(":android-display-chroma=RV32")
-                    addOption(":vout=android-display")
                     addOption(":network-caching=3000")
                     addOption(":file-caching=2000")
                 }
@@ -1438,18 +1453,7 @@ class PlayerActivity : AppCompatActivity() {
                     appPrefs.edit().putString("video_quality_mode", selectedValue).apply()
                     Toast.makeText(this, "Quality set to ${qualityOptions[which].substringBefore(" (")}. Reloading player...", Toast.LENGTH_SHORT).show()
                     val curTime = mediaPlayer?.time ?: 0L
-                    try {
-                        mediaPlayer?.stop()
-                        if (mediaPlayer?.vlcVout?.areViewsAttached() == true) {
-                            mediaPlayer?.detachViews()
-                        }
-                        mediaPlayer?.release()
-                        mediaPlayer = null
-                        libVLC?.release()
-                        libVLC = null
-                    } catch (e: Exception) {}
-                    initializeVlcPlayer()
-                    currentVideo?.let { playVideoItem(it, curTime) }
+                    initializeVlcPlayer(curTime)
                 }
             }
             .setNegativeButton("Cancel", null)
