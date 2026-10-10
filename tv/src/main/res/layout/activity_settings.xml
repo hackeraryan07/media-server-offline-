@@ -92,6 +92,63 @@
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
+            android:text="Internal Player Video Quality"
+            android:textColor="#FFFFFF"
+            android:textSize="20sp"
+            android:layout_marginTop="24dp"
+            android:layout_marginBottom="8dp"/>
+
+        <RadioGroup
+            android:id="@+id/radio_group_video_quality"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal">
+
+            <RadioButton
+                android:id="@+id/radio_quality_peak"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Peak Quality (RV32 32-Bit / HW Direct)"
+                android:textColor="#FFFFFF"
+                android:textSize="18sp"
+                android:focusable="true"
+                android:focusableInTouchMode="true"
+                android:padding="16dp"
+                android:layout_marginEnd="16dp"
+                android:buttonTint="#FFFFFF"
+                android:background="?android:attr/selectableItemBackground"/>
+
+            <RadioButton
+                android:id="@+id/radio_quality_balanced"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Balanced Quality"
+                android:textColor="#FFFFFF"
+                android:textSize="18sp"
+                android:focusable="true"
+                android:focusableInTouchMode="true"
+                android:padding="16dp"
+                android:layout_marginEnd="16dp"
+                android:buttonTint="#FFFFFF"
+                android:background="?android:attr/selectableItemBackground"/>
+
+            <RadioButton
+                android:id="@+id/radio_quality_powersave"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Compatibility Mode"
+                android:textColor="#FFFFFF"
+                android:textSize="18sp"
+                android:focusable="true"
+                android:focusableInTouchMode="true"
+                android:padding="16dp"
+                android:buttonTint="#FFFFFF"
+                android:background="?android:attr/selectableItemBackground"/>
+        </RadioGroup>
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
             android:text="Default Auto-Resume Action (10s Timer)"
             android:textColor="#FFFFFF"
             android:textSize="20sp"

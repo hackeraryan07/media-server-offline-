@@ -56,7 +56,7 @@ object TvPlayerLauncher {
 
     private fun showPlayerChoiceDialog(activity: Activity, video: TvVideo, playlist: ArrayList<TvVideo>? = null, currentIndex: Int = 0) {
         val options = arrayOf(
-            "Internal Player (LibVLC)",
+            "Internal Player (LibVLC - Peak Quality)",
             "External Player",
             "Always use Internal Player",
             "Always use External Player"

@@ -62,5 +62,27 @@ class TvSettingsActivity : Activity() {
             val value = if (checkedId == R.id.radio_continue) "continue" else "start_over"
             prefs.edit().putString("resume_default", value).apply()
         }
+
+        // Configure video rendering quality
+        val radioGroupQuality = findViewById<RadioGroup>(R.id.radio_group_video_quality)
+        val radioQualityPeak = findViewById<RadioButton>(R.id.radio_quality_peak)
+        val radioQualityBalanced = findViewById<RadioButton>(R.id.radio_quality_balanced)
+        val radioQualityPowersave = findViewById<RadioButton>(R.id.radio_quality_powersave)
+        val videoQuality = prefs.getString("video_quality_mode", "peak") ?: "peak"
+
+        when (videoQuality) {
+            "balanced" -> radioQualityBalanced.isChecked = true
+            "powersave" -> radioQualityPowersave.isChecked = true
+            else -> radioQualityPeak.isChecked = true
+        }
+
+        radioGroupQuality.setOnCheckedChangeListener { _, checkedId ->
+            val value = when (checkedId) {
+                R.id.radio_quality_balanced -> "balanced"
+                R.id.radio_quality_powersave -> "powersave"
+                else -> "peak"
+            }
+            prefs.edit().putString("video_quality_mode", value).apply()
+        }
     }
 }

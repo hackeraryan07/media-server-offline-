@@ -163,10 +163,26 @@ class PlayerActivity : AppCompatActivity() {
         val prefs = getSharedPreferences("PlayerPrefs", Context.MODE_PRIVATE)
         audioShiftMs = prefs.getLong("audioShiftMs", 0L)
         try {
+            window.setFormat(android.graphics.PixelFormat.RGBA_8888)
+            window.addFlags(android.view.WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED)
             super.onCreate(savedInstanceState)
             setContentView(R.layout.activity_player)
 
             videoLayout = findViewById(R.id.internalVideoView)
+            videoLayout.setOnHierarchyChangeListener(object : android.view.ViewGroup.OnHierarchyChangeListener {
+                override fun onChildViewAdded(parent: View?, child: View?) {
+                    if (child is android.view.SurfaceView) {
+                        child.holder.setFormat(android.graphics.PixelFormat.RGBA_8888)
+                    }
+                }
+                override fun onChildViewRemoved(parent: View?, child: View?) {}
+            })
+            for (i in 0 until videoLayout.childCount) {
+                val child = videoLayout.getChildAt(i)
+                if (child is android.view.SurfaceView) {
+                    child.holder.setFormat(android.graphics.PixelFormat.RGBA_8888)
+                }
+            }
             overlay = findViewById(R.id.playerControlsOverlay)
             titleText = findViewById(R.id.playerTitleText)
             titleText.isSelected = true
@@ -347,7 +363,21 @@ class PlayerActivity : AppCompatActivity() {
                 scheduleMetadataHide()
             }
             findViewById<View>(R.id.btnSettings).setOnClickListener {
-                val options = arrayOf("Select Audio Track", "Select Subtitles", "Audio Shift", "Playback Speed", "Open in External Player")
+                val appPrefs = getSharedPreferences("app_settings", Context.MODE_PRIVATE)
+                val curQualityMode = appPrefs.getString("video_quality_mode", "peak") ?: "peak"
+                val qualityLabel = when (curQualityMode) {
+                    "balanced" -> "Balanced (32-Bit)"
+                    "powersave" -> "Compatibility"
+                    else -> "Peak (RV32 32-Bit / HW Direct)"
+                }
+                val options = arrayOf(
+                    "Select Audio Track",
+                    "Select Subtitles",
+                    "Audio Shift",
+                    "Playback Speed",
+                    "Video Quality: $qualityLabel",
+                    "Open in External Player"
+                )
                 android.app.AlertDialog.Builder(this)
                     .setTitle("Settings")
                     .setItems(options) { _, which ->
@@ -356,7 +386,8 @@ class PlayerActivity : AppCompatActivity() {
                             1 -> showSubtitleDialog()
                             2 -> showAudioShiftDialog()
                             3 -> findViewById<View>(R.id.btnSpeed).callOnClick()
-                            4 -> {
+                            4 -> showVideoQualityDialog()
+                            5 -> {
                                 currentVideo?.let { video ->
                                     mediaPlayer?.pause()
                                     TvPlayerLauncher.launchExternalPlayer(this, video, playlist?.let { ArrayList(it) }, currentIndex)
@@ -443,13 +474,60 @@ class PlayerActivity : AppCompatActivity() {
     }
 
     private fun initializeVlcPlayer() {
+        val appPrefs = getSharedPreferences("app_settings", Context.MODE_PRIVATE)
+        val qualityMode = appPrefs.getString("video_quality_mode", "peak") ?: "peak"
+
         val options = ArrayList<String>().apply {
+            // General streaming & stability options
             add("--network-caching=3000")
+            add("--file-caching=2000")
+            add("--live-caching=2000")
+            add("--sout-mux-caching=2000")
             add("--rtsp-tcp")
             add("--audio-time-stretch")
+            add("--clock-jitter=0")
+
+            if (qualityMode == "peak") {
+                // Peak Quality Profile:
+                // 1. Force 32-bit RGBA color format (RV32) instead of 16-bit RGB 565 (eliminates color banding and washed-out colors)
+                add("--android-display-chroma=RV32")
+
+                // 2. Direct hardware rendering pipeline via MediaCodec NDK/JNI direct-to-surface
+                add("--vout=android-display")
+                add("--codec=mediacodec_ndk,mediacodec_jni,all")
+                add("--mediacodec")
+                add("--mediacodec-dr")
+                add("--mediacodec-audio")
+
+                // 3. Never skip deblocking loop filter: preserves full macroblock edge filtering for crisp, smooth detail
+                add("--avcodec-skiploopfilter=0")
+
+                // 4. Never drop or skip frames: full framerate preservation and temporal resolution
+                add("--avcodec-skip-frame=0")
+                add("--no-skip-frames")
+                add("--no-drop-late-frames")
+
+                // 5. Maximum post-processing quality & Bicubic texture scaling for 1080p / 4K displays
+                add("--postproc-q=6")
+                add("--sws-mode=2")
+                add("--sws-scaler=bicubic")
+
+                // 6. Automatic deinterlacing for 1080i/480i video sources
+                add("--deinterlace=1")
+                add("--deinterlace-mode=auto")
+            } else if (qualityMode == "balanced") {
+                add("--android-display-chroma=RV32")
+                add("--vout=android-display")
+                add("--codec=mediacodec_ndk,mediacodec_jni,all")
+                add("--mediacodec")
+                add("--mediacodec-dr")
+                add("--avcodec-skiploopfilter=0")
+            }
         }
         libVLC = LibVLC(this, options)
         mediaPlayer = MediaPlayer(libVLC)
+        mediaPlayer?.aspectRatio = null
+        mediaPlayer?.scale = 0f
         
         // Attach views safely if not already attached (use single surface to prevent overlay conflicts)
         if (mediaPlayer?.vlcVout?.areViewsAttached() != true) {
@@ -560,10 +638,43 @@ class PlayerActivity : AppCompatActivity() {
                 Media(libVLC, Uri.parse(video.url))
             }
 
+            val appPrefs = getSharedPreferences("app_settings", Context.MODE_PRIVATE)
+            val qualityMode = appPrefs.getString("video_quality_mode", "peak") ?: "peak"
+
             try {
-                media.setHWDecoderEnabled(true, false)
+                // Force full hardware acceleration (force = true overrides device model blacklists)
+                media.setHWDecoderEnabled(true, true)
             } catch (e: Exception) {
                 android.util.Log.w("PlayerActivity", "Could not set HWDecoderEnabled", e)
+            }
+
+            if (qualityMode == "peak") {
+                media.apply {
+                    addOption(":codec=mediacodec_ndk,mediacodec_jni,all")
+                    addOption(":mediacodec-dr=1")
+                    addOption(":no-mediacodec-dr=0")
+                    addOption(":mediacodec-audio=1")
+                    addOption(":avcodec-hw=any")
+                    addOption(":avcodec-skiploopfilter=0")
+                    addOption(":avcodec-skip-frame=0")
+                    addOption(":no-skip-frames")
+                    addOption(":android-display-chroma=RV32")
+                    addOption(":vout=android-display")
+                    addOption(":sws-mode=2")
+                    addOption(":postproc-q=6")
+                    addOption(":network-caching=3000")
+                    addOption(":file-caching=2000")
+                    addOption(":live-caching=2000")
+                }
+            } else if (qualityMode == "balanced") {
+                media.apply {
+                    addOption(":codec=mediacodec_ndk,mediacodec_jni,all")
+                    addOption(":mediacodec-dr=1")
+                    addOption(":android-display-chroma=RV32")
+                    addOption(":vout=android-display")
+                    addOption(":network-caching=3000")
+                    addOption(":file-caching=2000")
+                }
             }
 
             mediaPlayer?.media = media
@@ -1301,5 +1412,47 @@ class PlayerActivity : AppCompatActivity() {
                 }
                 .show()
         }
+    }
+
+    private fun showVideoQualityDialog() {
+        val appPrefs = getSharedPreferences("app_settings", Context.MODE_PRIVATE)
+        val currentQuality = appPrefs.getString("video_quality_mode", "peak") ?: "peak"
+        val qualityOptions = arrayOf(
+            "Peak Quality (RV32 32-Bit Color + Full HW Direct Rendering)",
+            "Balanced Quality (RV32 32-Bit + Standard HW)",
+            "Compatibility Mode"
+        )
+        val qualityValues = arrayOf("peak", "balanced", "powersave")
+        val currentIndex = when (currentQuality) {
+            "balanced" -> 1
+            "powersave" -> 2
+            else -> 0
+        }
+
+        android.app.AlertDialog.Builder(this)
+            .setTitle("Video Rendering Quality")
+            .setSingleChoiceItems(qualityOptions, currentIndex) { dialog, which ->
+                dialog.dismiss()
+                val selectedValue = qualityValues[which]
+                if (selectedValue != currentQuality) {
+                    appPrefs.edit().putString("video_quality_mode", selectedValue).apply()
+                    Toast.makeText(this, "Quality set to ${qualityOptions[which].substringBefore(" (")}. Reloading player...", Toast.LENGTH_SHORT).show()
+                    val curTime = mediaPlayer?.time ?: 0L
+                    try {
+                        mediaPlayer?.stop()
+                        if (mediaPlayer?.vlcVout?.areViewsAttached() == true) {
+                            mediaPlayer?.detachViews()
+                        }
+                        mediaPlayer?.release()
+                        mediaPlayer = null
+                        libVLC?.release()
+                        libVLC = null
+                    } catch (e: Exception) {}
+                    initializeVlcPlayer()
+                    currentVideo?.let { playVideoItem(it, curTime) }
+                }
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
     }
 }
